@@ -27,10 +27,19 @@ export interface TankSnapshot {
 
 /** How strongly gravity along the slope affects speed (0..1). */
 const SLOPE_EFFECT = 0.55;
+/** Fraction of top speed lost per unit of uphill gradient. */
+const CLIMB_PENALTY = 1.2;
+const MIN_CLIMB_SPEED = 0.35;
+/** Fractional top-speed gain per unit of downhill gradient (capped at 0.3 gradient). */
+const DESCENT_BONUS = 0.5;
 /** Responsiveness of the hull's alignment to terrain (per second). */
 const TERRAIN_ALIGN_RATE = 10;
 const RECOIL_RECOVERY = 2.2;
 const DAMAGE_FLASH_DECAY = 3.5;
+/** Gunner's sight offset from the gun pivot (turret frame, metres). */
+const GUNNER_SIGHT_SIDE = 0;
+const GUNNER_SIGHT_HEIGHT = 1.25;
+const GUNNER_SIGHT_BACK = 0.55;
 const NO_CONTROLS: TankControls = { throttle: 0, turn: 0, fire: false };
 
 const scratchMatrix = new Matrix4();
@@ -120,7 +129,18 @@ export class Tank {
     const maxForward = s.maxSpeed * speedMultiplier;
     const maxReverse = s.reverseSpeed * speedMultiplier;
     const throttle = clamp(c.throttle, -1, 1);
-    const target = throttle >= 0 ? throttle * maxForward : throttle * maxReverse;
+
+    // Gradient along the hull's forward axis (positive = nose up).
+    const fx = Math.sin(this.heading);
+    const fz = -Math.cos(this.heading);
+    const probe = 2.5 * s.scale;
+    const rise =
+      (terrain.heightAt(this.x + fx * probe, this.z + fz * probe) - terrain.heightAt(this.x - fx * probe, this.z - fz * probe)) /
+      (2 * probe);
+    // The engine can't hold top speed up a hill; going down it runs a little faster.
+    const climb = rise * Math.sign(throttle);
+    const slopeFactor = climb > 0 ? clamp(1 - climb * CLIMB_PENALTY, MIN_CLIMB_SPEED, 1) : 1 + Math.min(-climb, 0.3) * DESCENT_BONUS;
+    const target = (throttle >= 0 ? throttle * maxForward : throttle * maxReverse) * slopeFactor;
 
     let rate: number;
     if (throttle === 0) rate = s.coastDeceleration;
@@ -128,14 +148,7 @@ export class Tank {
     else if (Math.abs(target) > Math.abs(this.speed)) rate = s.acceleration;
     else rate = s.coastDeceleration;
     this.speed = moveTowards(this.speed, target, rate * dt);
-
-    // Gravity component along the hull's forward axis slows climbs and speeds descents.
-    const fx = Math.sin(this.heading);
-    const fz = -Math.cos(this.heading);
-    const probe = 2.5 * s.scale;
-    const rise =
-      (terrain.heightAt(this.x + fx * probe, this.z + fz * probe) - terrain.heightAt(this.x - fx * probe, this.z - fz * probe)) /
-      (2 * probe);
+    // Gravity along the slope slows climbs and lets a coasting tank roll.
     this.speed -= WORLD.gravity * (rise / Math.sqrt(1 + rise * rise)) * SLOPE_EFFECT * dt;
     if (throttle === 0 && Math.abs(this.speed) < 0.05) this.speed = 0;
 
@@ -239,6 +252,26 @@ export class Tank {
   getSightPoint(out: Vector3, heightAboveGun = 0.9): Vector3 {
     const s = this.spec;
     out.set(0, (s.turretPivotY + s.gunPivotY + heightAboveGun) * s.scale, s.turretPivotZ * s.scale);
+    out.applyQuaternion(this.orientation);
+    out.x += this.x;
+    out.y += this.y;
+    out.z += this.z;
+    return out;
+  }
+
+  /** Gunner's sight: above and right of the gun mantlet, turning with the turret. */
+  getGunnerView(out: Vector3): Vector3 {
+    const s = this.spec;
+    const k = s.scale;
+    const side = GUNNER_SIGHT_SIDE;
+    const forward = s.gunPivotZ + GUNNER_SIGHT_BACK;
+    const cy = Math.cos(this.turretYaw);
+    const sy = Math.sin(this.turretYaw);
+    out.set(
+      (side * cy - forward * sy) * k,
+      (s.turretPivotY + s.gunPivotY + GUNNER_SIGHT_HEIGHT) * k,
+      (s.turretPivotZ + side * sy + forward * cy) * k,
+    );
     out.applyQuaternion(this.orientation);
     out.x += this.x;
     out.y += this.y;

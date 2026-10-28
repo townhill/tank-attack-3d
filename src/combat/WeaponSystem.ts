@@ -43,11 +43,11 @@ export function segmentVsTank(
   tank: Tank,
 ): number {
   const h = tank.spec.hitHalfExtents;
-  // Cheap sphere rejection before the oriented box test.
-  const cx = tank.x;
-  const cy = tank.y + h.y;
-  const cz = tank.z;
-  const bound = Math.hypot(h.x, h.y, h.z);
+  // Cheap sphere rejection before the oriented box test; the centre follows the hull's tilt.
+  const cx = tank.x + tank.up.x * h.y;
+  const cy = tank.y + tank.up.y * h.y;
+  const cz = tank.z + tank.up.z * h.y;
+  const bound = Math.hypot(h.x, h.y, h.z) + 0.05;
   const dx = bx - ax;
   const dy = by - ay;
   const dz = bz - az;
