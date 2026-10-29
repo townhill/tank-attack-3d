@@ -1,5 +1,7 @@
 # VECTOR TANKS
 
+![Chase view in Modern Neon Vector mode: the player's cyan tank faces red standard, orange heavy and magenta scout tanks beside a radio tower and multi-storey buildings, with the radar, armour and cannon gauges on the HUD](docs/screenshots/neon-chase.jpg)
+
 A browser-based 3D tank combat game inspired by the 1980 arcade classic *Battlezone* and the 1989 Acorn Archimedes game *3D Tanks*, rebuilt with modern hidden-line vector graphics, physics-based tank handling, state-machine enemy AI, a compact radar and a full tactical map.
 
 Everything is original code and procedurally generated geometry and sound. There are no asset downloads, accounts or backend services: the game runs entirely in the browser.
@@ -8,6 +10,27 @@ Everything is original code and procedurally generated geometry and sound. There
 - **Three cameras:** gunner (first person), chase (third person) and tactical (overhead).
 - **Three enemy types:** standard, heavy and scout, each with distinct AI behaviour, across escalating waves.
 - **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks, futuristic structures and two- to four-storey buildings.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/explosion.jpg" alt="An enemy tank explodes in front of the player's tank, throwing out debris and an orange shockwave ring, with a +100 STANDARD DESTROYED kill-feed entry"></td>
+    <td width="50%"><img src="docs/screenshots/gunner-view.jpg" alt="Gunner view down the cyan gun barrel, with an orange heavy tank bracketed under the crosshair and red standard tanks on either side"></td>
+  </tr>
+  <tr>
+    <td><b>Direct hit.</b> A destroyed tank throws out debris and a shockwave, and the kill feed scores it.</td>
+    <td><b>Gunner view.</b> Target brackets mark enemies in line of sight. The gun marker turns red when the shot would hit.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/tactical-map.jpg" alt="Tactical map of the whole battlefield with shaded relief, contour lines, A to J and 1 to 10 grid references, structures, and enemy tanks with motion vectors"></td>
+    <td><img src="docs/screenshots/main-menu.jpg" alt="Main menu with the glowing VECTOR TANKS title and options for graphics mode, difficulty and map size over a live neon battlefield"></td>
+  </tr>
+  <tr>
+    <td><b>Tactical map.</b> The whole battlefield with relief, contours, grid references and live enemy motion vectors.</td>
+    <td><b>Main menu.</b> Choose graphics mode, difficulty and map size over a live battlefield.</td>
+  </tr>
+</table>
 
 ---
 
@@ -187,7 +210,11 @@ Choose the battlefield size on the main menu. It is saved with your settings and
 
 ## Graphics modes
 
-All three modes render the same scene graph from the same simulation. A mode changes only colours, material styles, lighting and post-processing.
+All three modes render the same scene graph from the same simulation. A mode changes only colours, material styles, lighting and post-processing. Here is the same battle in each mode:
+
+| Classic Vector | **Modern Neon Vector** (default) | Hybrid 3D |
+|---|---|---|
+| ![The battle in Classic Vector mode: green phosphor outlines on black](docs/screenshots/mode-classic.jpg) | ![The battle in Modern Neon Vector mode: cyan, red, orange and magenta outlines over a teal grid](docs/screenshots/mode-neon.jpg) | ![The battle in Hybrid 3D mode: shaded armour and lit terrain with coloured edge highlights](docs/screenshots/mode-hybrid.jpg) |
 
 | | Classic Vector | **Modern Neon Vector** (default) | Hybrid 3D |
 |---|---|---|---|
