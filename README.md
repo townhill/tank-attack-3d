@@ -7,7 +7,7 @@ Everything is original code and procedurally generated geometry and sound. There
 - **Three graphics modes on one simulation:** Classic Vector (green phosphor), **Modern Neon Vector** (default, true hidden-line removal) and Hybrid 3D (shaded armour with shadows). Switching mode never resets the game.
 - **Three cameras:** gunner (first person), chase (third person) and tactical (overhead).
 - **Three enemy types:** standard, heavy and scout, each with distinct AI behaviour, across escalating waves.
-- **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks and futuristic structures.
+- **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks, futuristic structures and two- to four-storey buildings.
 
 ---
 
@@ -163,7 +163,7 @@ Accuracy:
 - **What it shows:**
   - The whole battlefield with shaded relief and contour lines.
   - A–J / 1–10 grid references, a scale bar and a legend.
-  - Every obstacle at its real footprint.
+  - Every obstacle at its real footprint. Buildings show one tick per storey.
   - The player's heading and turret.
   - Every enemy with heading and a six-second motion vector, updated live.
   - Shells and wrecks.

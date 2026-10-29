@@ -18,7 +18,7 @@ export const WORLD = {
   spawnClearRadius: 55,
   gravity: 9.81,
   rockCount: 75,
-  structureCount: 18,
+  structureCount: 24,
 } as const;
 
 export type TankKind = 'player' | 'standard' | 'heavy' | 'scout';

@@ -9,6 +9,7 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { Random } from '../utils/random';
 import type { Obstacle } from '../world/Obstacle';
+import { buildingStoreys, STOREY_HEIGHT } from '../world/Obstacle';
 import type { World } from '../world/World';
 import type { Vec2 } from './geometry';
 import { box, edgePositions, loft, mergeParts, polygon, SegmentList, transformSegments } from './geometry';
@@ -17,6 +18,15 @@ import type { MaterialLibrary } from './Materials';
 
 const CHUNK_SIZE = 250;
 const LIFT = 0.03;
+
+const WINDOW_SPACING = 3;
+const WINDOW_WIDTH = 1.2;
+const WINDOW_SILL = 1;
+const WINDOW_HEIGHT = 1.5;
+const WINDOW_GAP_CHANCE = 0.12;
+const DOOR_WIDTH = 2.4;
+const DOOR_HEIGHT = 2.6;
+const PARAPET_INSET = 0.6;
 
 interface Piece {
   readonly geo: BufferGeometry;
@@ -57,11 +67,70 @@ function rockModel(ob: Obstacle): ObstacleModel {
   return { pieces, detail: new SegmentList() };
 }
 
+/** One wall of a building: maps a position along the wall and a height to a point just proud of it. */
+interface Facade {
+  readonly half: number;
+  point(u: number, y: number): [number, number, number];
+}
+
+function facadeRect(detail: SegmentList, facade: Facade, u: number, y: number, width: number, height: number): void {
+  const a = u - width / 2;
+  const b = u + width / 2;
+  detail.loop([facade.point(a, y), facade.point(b, y), facade.point(b, y + height), facade.point(a, y + height)]);
+}
+
+/** Rows of windows, one per storey, with a few seeded gaps; the front wall gets a door instead of its middle ground-floor windows. */
+function facadeDetail(detail: SegmentList, facade: Facade, storeys: number, rng: Random, withDoor: boolean): void {
+  const columns = Math.max(1, Math.floor((2 * facade.half) / WINDOW_SPACING));
+  const pitch = (2 * facade.half) / columns;
+  for (let k = 0; k < storeys; k++) {
+    for (let c = 0; c < columns; c++) {
+      const u = -facade.half + (c + 0.5) * pitch;
+      if (withDoor && k === 0 && Math.abs(u) < DOOR_WIDTH) continue;
+      if (rng.chance(WINDOW_GAP_CHANCE)) continue;
+      facadeRect(detail, facade, u, k * STOREY_HEIGHT + WINDOW_SILL, WINDOW_WIDTH, WINDOW_HEIGHT);
+    }
+  }
+  if (withDoor) facadeRect(detail, facade, 0, 0, DOOR_WIDTH, DOOR_HEIGHT);
+}
+
+/**
+ * Multi-storey building: one box per storey so the floor lines are crease edges
+ * in every graphics mode, plus windows, a door and a roof parapet as detail.
+ * Nothing rises above the collision height.
+ */
+function buildingModel(ob: Obstacle): ObstacleModel {
+  const rng = new Random(ob.seed);
+  const hx = ob.shape.type === 'box' ? ob.shape.halfX : ob.boundRadius;
+  const hz = ob.shape.type === 'box' ? ob.shape.halfZ : ob.boundRadius;
+  const storeys = buildingStoreys(ob);
+  const pieces: Piece[] = [];
+  for (let k = 0; k < storeys; k++) {
+    pieces.push({ geo: box(-hx, k * STOREY_HEIGHT, -hz, hx, (k + 1) * STOREY_HEIGHT, hz), angle: 20 });
+  }
+  const detail = new SegmentList();
+  const facades: Facade[] = [
+    { half: hx, point: (u, y) => [u, y, -hz - LIFT] },
+    { half: hx, point: (u, y) => [u, y, hz + LIFT] },
+    { half: hz, point: (u, y) => [-hx - LIFT, y, u] },
+    { half: hz, point: (u, y) => [hx + LIFT, y, u] },
+  ];
+  // The first facade is the front (-Z) wall, which carries the door.
+  facades.forEach((facade, index) => {
+    facadeDetail(detail, facade, storeys, rng, index === 0);
+  });
+  const roofY = storeys * STOREY_HEIGHT + LIFT;
+  detail.loop(rect(hx - PARAPET_INSET, hz - PARAPET_INSET).map((p) => [p[0], roofY, p[1]] as [number, number, number]));
+  return { pieces, detail };
+}
+
 function structureModel(ob: Obstacle): ObstacleModel {
   const h = ob.height;
   const detail = new SegmentList();
   const pieces: Piece[] = [];
   switch (ob.kind) {
+    case 'building':
+      return buildingModel(ob);
     case 'pyramid': {
       const s = ob.shape.type === 'box' ? ob.shape.halfX : ob.boundRadius;
       pieces.push({ geo: loft(rect(s, s), rect(s * 0.02, s * 0.02), 0, h), angle: 20 });

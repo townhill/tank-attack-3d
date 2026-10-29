@@ -771,7 +771,7 @@ export class TacticalMap {
   private renderLegend(): void {
     const items: LegendItem[] = ['player', 'standard', 'heavy', 'scout'];
     if (this.intel === 'radar') items.push('ghost');
-    items.push('vector', 'wreck', 'shell', 'structure', 'rock', 'boundary');
+    items.push('vector', 'wreck', 'shell', 'structure', 'building', 'rock', 'boundary');
     const dpr = this.dpr;
     const height = LEGEND_PAD * 2 + items.length * LEGEND_ROW;
     this.legend.style.height = `${height}px`;

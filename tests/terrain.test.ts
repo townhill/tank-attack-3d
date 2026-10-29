@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { WORLD } from '../src/config/settings';
 import type { Obstacle, ObstacleShape } from '../src/world/Obstacle';
-import { boundRadiusOf } from '../src/world/Obstacle';
+import { boundRadiusOf, buildingStoreys, STOREY_HEIGHT } from '../src/world/Obstacle';
 import { ObstacleGrid } from '../src/world/ObstacleGrid';
 import { Terrain } from '../src/world/Terrain';
-import { generateWorld } from '../src/world/WorldGenerator';
+import { generateWorld, MAX_BUILDING_SLOPE } from '../src/world/WorldGenerator';
 import { Random } from '../src/utils/random';
 
 /** Terrain whose height is the plane `slopeX * x + slopeZ * z`. */
@@ -242,6 +242,40 @@ describe('generateWorld', () => {
     expect(structures).toBeLessThanOrEqual(WORLD.structureCount);
     worldA.obstacles.forEach((ob, index) => {
       expect(ob.id).toBe(index);
+    });
+  });
+
+  describe('buildings', () => {
+    const worlds = [worldA, worldB, ...[7, 2024, 99999].map((seed) => generateWorld(seed))];
+    const buildings = worlds.flatMap((world) => world.obstacles.filter((o) => o.kind === 'building').map((ob) => ({ world, ob })));
+
+    it('appear on every battlefield', () => {
+      for (const world of worlds) expect(world.obstacles.some((o) => o.kind === 'building')).toBe(true);
+    });
+
+    it('are boxes two to four whole storeys tall, and all three storey counts occur', () => {
+      const counts = new Set<number>();
+      for (const { ob } of buildings) {
+        expect(ob.shape.type).toBe('box');
+        const storeys = buildingStoreys(ob);
+        expect(storeys).toBeGreaterThanOrEqual(2);
+        expect(storeys).toBeLessThanOrEqual(4);
+        expect(ob.height).toBeCloseTo(storeys * STOREY_HEIGHT, 9);
+        counts.add(storeys);
+      }
+      expect([...counts].sort()).toEqual([2, 3, 4]);
+    });
+
+    it('stand only on gentle ground so the ground floor is not buried', () => {
+      for (const { world, ob } of buildings) {
+        expect(world.terrain.slopeAt(ob.x, ob.z)).toBeLessThanOrEqual(MAX_BUILDING_SLOPE);
+        for (let a = 0; a < 6; a++) {
+          const angle = (a / 6) * Math.PI * 2;
+          const x = ob.x + Math.cos(angle) * ob.boundRadius;
+          const z = ob.z + Math.sin(angle) * ob.boundRadius;
+          expect(world.terrain.slopeAt(x, z)).toBeLessThanOrEqual(MAX_BUILDING_SLOPE);
+        }
+      }
     });
   });
 

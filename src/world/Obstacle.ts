@@ -1,6 +1,9 @@
-/** Static battlefield obstacles: rocks and futuristic military structures. */
+/** Static battlefield obstacles: rocks, futuristic military structures and multi-storey buildings. */
 
-export type ObstacleKind = 'rock' | 'pyramid' | 'block' | 'bunker' | 'tower' | 'wall' | 'pylon';
+export type ObstacleKind = 'rock' | 'pyramid' | 'block' | 'bunker' | 'tower' | 'wall' | 'pylon' | 'building';
+
+/** Floor-to-floor height of a building; a building is always a whole number of storeys tall. */
+export const STOREY_HEIGHT = 3.5;
 
 export interface CircleShape {
   readonly type: 'circle';
@@ -50,6 +53,11 @@ export function profileScale(kind: ObstacleKind, t: number): number {
 
 export function hasTaperedProfile(kind: ObstacleKind): boolean {
   return kind === 'pyramid' || kind === 'rock' || kind === 'tower';
+}
+
+/** Number of storeys in a building, recovered from its height. */
+export function buildingStoreys(ob: Obstacle): number {
+  return Math.round(ob.height / STOREY_HEIGHT);
 }
 
 export function boundRadiusOf(shape: ObstacleShape): number {
