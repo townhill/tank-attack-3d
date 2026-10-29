@@ -95,7 +95,7 @@ export class Simulation {
     this.rng = new Random(options.seed ^ hashSeed(options.difficulty));
     this.waves = new WaveManager(this.difficultySpec, this.rng, options.firstWaveDelay ?? 3);
     this.player = new Tank(0, TANK_SPECS.player, 'player');
-    this.player.placeAt(0, 0, 0, this.world.terrain);
+    this.player.placeAt(0, 0, 0, this.world);
     this.tanks.push(this.player);
   }
 
@@ -126,10 +126,10 @@ export class Simulation {
     this.applyPlayerCommand(command);
     this.updateAI(dt);
     const enemySpeed = this.difficultySpec.enemySpeedMultiplier;
-    for (const t of this.tanks) t.integrateMotion(dt, this.world.terrain, t.faction === 'enemy' ? enemySpeed : 1);
+    for (const t of this.tanks) t.integrateMotion(dt, this.world, t.faction === 'enemy' ? enemySpeed : 1);
     this.resolveCollisions();
     for (const t of this.tanks) {
-      t.settleOnTerrain(this.world.terrain, dt);
+      t.settleOnGround(this.world, dt);
       t.updateTurret(dt);
       t.updateTimers(dt);
     }
@@ -389,7 +389,7 @@ export class Simulation {
       if (this.isBlocked(x, z, spec.collisionRadius + 5)) continue;
       const tank = new Tank(this.nextTankId++, spec, 'enemy');
       const towardsPlayer = headingOf(this.player.x - x, this.player.z - z);
-      tank.placeAt(x, z, towardsPlayer + this.rng.range(-1.2, 1.2), world.terrain);
+      tank.placeAt(x, z, towardsPlayer + this.rng.range(-1.2, 1.2), world);
       const controller = new EnemyController(tank, kind, this.rng, this.difficultySpec, world.playableHalfSize);
       this.tanks.push(tank);
       this.enemies.push({ tank, kind, controller });

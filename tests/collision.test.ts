@@ -485,7 +485,7 @@ describe('World raycasts', () => {
   const buildWorld = (obstacles: Obstacle[], terrain = new Terrain(100, 5)): World => new World(1, terrain, obstacles, 80);
 
   it('createStaticHit starts as a miss', () => {
-    expect(createStaticHit()).toEqual({ t: NO_HIT, obstacle: null });
+    expect(createStaticHit()).toEqual({ t: NO_HIT, surface: 'none', obstacle: null });
   });
 
   it('heightAt delegates to the terrain', () => {
@@ -498,15 +498,17 @@ describe('World raycasts', () => {
     const world = buildWorld([block]);
     const out = createStaticHit();
     world.raycastStatic(-30, 5, 0, 60, 5, 0, out);
+    expect(out.surface).toBe('obstacle');
     expect(out.obstacle).toBe(block);
     expect(out.t).toBeCloseTo(47 / 90, 9);
   });
 
-  it('raycastStatic reports terrain (null obstacle) when only the ground is hit', () => {
+  it('raycastStatic reports a terrain hit with no obstacle when only the ground is hit', () => {
     const block = makeObstacle('block', box(3, 3), { x: 20, z: 0 });
     const world = buildWorld([block]);
     const out = createStaticHit();
     world.raycastStatic(-30, 5, 0, 0, -5, 0, out);
+    expect(out.surface).toBe('terrain');
     expect(out.obstacle).toBeNull();
     expect(out.t).toBeCloseTo(0.5, 2);
   });
@@ -516,6 +518,16 @@ describe('World raycasts', () => {
     const out = createStaticHit();
     world.raycastStatic(-30, 50, 0, 60, 50, 0, out);
     expect(out.t).toBe(NO_HIT);
+    expect(out.surface).toBe('none');
+    expect(out.obstacle).toBeNull();
+  });
+
+  it('raycastStatic clears the surface of a reused hit record on a miss', () => {
+    const world = buildWorld([makeObstacle('block', box(3, 3), { x: 20, z: 0 })]);
+    const out = createStaticHit();
+    world.raycastStatic(-30, 5, 0, 60, 5, 0, out);
+    world.raycastStatic(-30, 50, 0, 60, 50, 0, out);
+    expect(out.surface).toBe('none');
     expect(out.obstacle).toBeNull();
   });
 
@@ -524,12 +536,14 @@ describe('World raycasts', () => {
     const nearBlock = makeObstacle('block', box(3, 3), { x: -20, z: 0, baseY: -1, height: 10 });
     const out = createStaticHit();
     buildWorld([nearBlock]).raycastStatic(-40, 8, 0, 40, -8, 0, out);
+    expect(out.surface).toBe('obstacle');
     expect(out.obstacle).toBe(nearBlock);
     expect(out.t).toBeCloseTo(17 / 80, 9);
 
     // A block on the far side only gets hit below ground level, after the terrain.
     const farBlock = makeObstacle('block', box(3, 3), { x: 20, z: 0, baseY: -10, height: 20 });
     buildWorld([farBlock]).raycastStatic(-40, 8, 0, 40, -8, 0, out);
+    expect(out.surface).toBe('terrain');
     expect(out.obstacle).toBeNull();
     expect(out.t).toBeCloseTo(0.5, 2);
   });

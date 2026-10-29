@@ -2,20 +2,24 @@ import { PROJECTILE } from '../config/settings';
 import { NO_HIT, segmentVsObstacle, segmentVsTerrain } from './Collision';
 import type { Obstacle } from './Obstacle';
 import { ObstacleGrid } from './ObstacleGrid';
-import type { Terrain } from './Terrain';
+import type { HeightField, Terrain } from './Terrain';
+
+/** What a static raycast struck; 'none' when the segment reached its end. */
+export type StaticSurface = 'none' | 'terrain' | 'obstacle';
 
 export interface StaticHit {
   t: number;
-  /** Obstacle hit, or null for terrain. */
+  surface: StaticSurface;
+  /** Obstacle hit, or null for any other surface. */
   obstacle: Obstacle | null;
 }
 
 export function createStaticHit(): StaticHit {
-  return { t: NO_HIT, obstacle: null };
+  return { t: NO_HIT, surface: 'none', obstacle: null };
 }
 
 /** The static battlefield: terrain, obstacles and their spatial index. */
-export class World {
+export class World implements HeightField {
   readonly grid: ObstacleGrid;
   private readonly scratch: Obstacle[] = [];
 
@@ -28,6 +32,7 @@ export class World {
     this.grid = new ObstacleGrid(terrain.halfSize, 40, obstacles);
   }
 
+  /** Height of the drivable ground at (x, z): the surface tank tracks rest on. */
   heightAt(x: number, z: number): number {
     return this.terrain.heightAt(x, z);
   }
@@ -45,12 +50,14 @@ export class World {
     terrainStep: number = PROJECTILE.terrainStep,
   ): StaticHit {
     out.t = segmentVsTerrain(ax, ay, az, bx, by, bz, this.terrain, terrainStep);
+    out.surface = out.t === NO_HIT ? 'none' : 'terrain';
     out.obstacle = null;
     const candidates = this.grid.querySegment(ax, az, bx, bz, this.scratch);
     for (const ob of candidates) {
       const t = segmentVsObstacle(ax, ay, az, bx, by, bz, ob);
       if (t < out.t) {
         out.t = t;
+        out.surface = 'obstacle';
         out.obstacle = ob;
       }
     }

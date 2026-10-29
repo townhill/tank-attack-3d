@@ -568,7 +568,7 @@ function tick(h: Harness, options: TickOptions = {}): void {
   h.controller.update(ctx);
   if (options.move) {
     h.enemy.integrateMotion(DT, h.world.terrain, h.difficulty.enemySpeedMultiplier);
-    h.enemy.settleOnTerrain(h.world.terrain, DT);
+    h.enemy.settleOnGround(h.world.terrain, DT);
   }
   h.enemy.updateTurret(DT);
   if (options.tickTimers ?? true) h.enemy.updateTimers(DT);

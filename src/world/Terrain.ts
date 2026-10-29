@@ -1,10 +1,15 @@
+/** Anything a tracked vehicle can rest on: a height for every point on the XZ plane. */
+export interface HeightField {
+  heightAt(x: number, z: number): number;
+}
+
 /**
  * Heightfield terrain. Height queries interpolate over exactly the same
  * triangles the renderer draws, so tanks and shells meet the visible surface.
  *
  * Each grid cell is split along the diagonal from (i, j) to (i + 1, j + 1).
  */
-export class Terrain {
+export class Terrain implements HeightField {
   /** Vertices per side. */
   readonly resolution: number;
   readonly heights: Float32Array;

@@ -17,7 +17,7 @@ function flatWorld(obstacles: Obstacle[] = []): World {
 
 function settle(tank: Tank, world: World, steps = 240): void {
   for (let i = 0; i < steps; i++) tank.updateTurret(1 / 60);
-  tank.settleOnTerrain(world.terrain, 0);
+  tank.settleOnGround(world.terrain, 0);
 }
 
 describe('AimSolver', () => {

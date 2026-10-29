@@ -118,11 +118,11 @@ export function stepProjectile(
   world.raycastStatic(p.x, p.y, p.z, nx, ny, nz, staticHit);
   let surface: HitSurface = 'tank';
   let obstacle: Obstacle | null = null;
-  if (staticHit.t < bestT) {
+  if (staticHit.surface !== 'none' && staticHit.t < bestT) {
     bestT = staticHit.t;
     bestTank = null;
     obstacle = staticHit.obstacle;
-    surface = obstacle ? 'obstacle' : 'terrain';
+    surface = staticHit.surface;
   }
 
   if (bestT !== NO_HIT) {
