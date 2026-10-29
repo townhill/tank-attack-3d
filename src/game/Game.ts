@@ -23,6 +23,8 @@ import { PerfOverlay } from '../ui/PerfOverlay';
 import { Radar } from '../ui/Radar';
 import { TacticalMap } from '../ui/TacticalMap';
 import { Random } from '../utils/random';
+import type { Bridge } from '../world/Bridge';
+import { toWorldX, toWorldZ } from '../world/Obstacle';
 import { AimSolver } from './Aiming';
 import type { GameEvent } from './events';
 import { FixedStepAccumulator } from './GameLoop';
@@ -678,11 +680,18 @@ export class Game {
       tankViews: this.worldView.tankViewCount,
       fps: this.perf.fps,
       render: this.renderer.stats,
+      water: {
+        rivers: this.sim.world.rivers.length,
+        lakes: this.sim.world.lakes.length,
+        bridges: this.sim.world.bridges.length,
+        playerBridge: p.bridgeId,
+        playerDepth: this.sim.world.water.depthAt(p.x, p.z),
+      },
     };
   }
 
   /** Development helper: drive the game from automated tests. */
-  debugCommand(command: 'start' | 'pause' | 'resume' | 'camera' | 'map' | 'mode' | 'kill-player' | 'spawn'): void {
+  debugCommand(command: 'start' | 'pause' | 'resume' | 'camera' | 'map' | 'mode' | 'kill-player' | 'spawn' | 'bridge'): void {
     switch (command) {
       case 'start':
         this.startNewGame(this.seed);
@@ -708,7 +717,22 @@ export class Game {
       case 'spawn':
         this.sim.spawnEnemy('standard');
         break;
+      case 'bridge':
+        this.placePlayerAtBridge();
+        break;
     }
+  }
+
+  /** Development helper: puts the player on the approach to the nearest bridge, facing across it. */
+  private placePlayerAtBridge(): void {
+    const p = this.sim.player;
+    let nearest: Bridge | null = null;
+    for (const b of this.sim.world.bridges) {
+      if (!nearest || Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(nearest.x - p.x, nearest.z - p.z)) nearest = b;
+    }
+    if (!nearest) return;
+    const along = nearest.halfLength + 20;
+    p.placeAt(nearest.x + toWorldX(0, along, nearest.yaw), nearest.z + toWorldZ(0, along, nearest.yaw), nearest.yaw, this.sim.world);
   }
 
   dispose(): void {

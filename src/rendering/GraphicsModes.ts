@@ -23,6 +23,9 @@ export interface GraphicsModeSpec {
   readonly rock: ColourPair;
   readonly structure: ColourPair;
   readonly mountains: ColourPair;
+  readonly bridge: ColourPair;
+  /** Water surface colour and opacity (1 = an opaque occluder), and the shoreline edge colour. */
+  readonly water: { readonly surface: number; readonly opacity: number; readonly shore: number };
   readonly terrain: {
     readonly low: number;
     readonly high: number;
@@ -83,6 +86,8 @@ export const GRAPHICS_MODE_SPECS: Readonly<Record<GraphicsModeId, GraphicsModeSp
     rock: { edge: 0x1fa848, solid: 0x000000 },
     structure: { edge: CLASSIC_GREEN, solid: 0x000000 },
     mountains: { edge: 0x2bd957, solid: 0x000000 },
+    bridge: { edge: CLASSIC_GREEN, solid: 0x000000 },
+    water: { surface: 0x000000, opacity: 1, shore: 0x7dffa0 },
     terrain: {
       low: 0x000000,
       high: 0x000000,
@@ -135,6 +140,8 @@ export const GRAPHICS_MODE_SPECS: Readonly<Record<GraphicsModeId, GraphicsModeSp
     rock: { edge: 0x179c8a, solid: 0x05090c },
     structure: { edge: 0x8a7dff, solid: 0x07081a },
     mountains: { edge: 0x2a4dff, solid: 0x02040e },
+    bridge: { edge: 0xffb84d, solid: 0x0d0a06 },
+    water: { surface: 0x03121c, opacity: 0.85, shore: 0x2fd2ff },
     terrain: {
       low: 0x03080b,
       high: 0x071419,
@@ -187,6 +194,8 @@ export const GRAPHICS_MODE_SPECS: Readonly<Record<GraphicsModeId, GraphicsModeSp
     rock: { edge: 0x3fb8a8, solid: 0x5d666c },
     structure: { edge: 0xa99dff, solid: 0x4c5070 },
     mountains: { edge: 0x4a6dff, solid: 0x111833 },
+    bridge: { edge: 0xffc46b, solid: 0x6a6e78 },
+    water: { surface: 0x1d4a5c, opacity: 0.72, shore: 0x6fdcff },
     terrain: {
       low: 0x24352f,
       high: 0x55665a,

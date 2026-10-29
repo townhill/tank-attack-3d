@@ -49,9 +49,18 @@ export class Terrain implements HeightField {
 
   /** Height of the rendered surface at world position (x, z). */
   heightAt(x: number, z: number): number {
+    return this.sampleField(this.heights, x, z);
+  }
+
+  /**
+   * Interpolates any per-vertex field laid out like `heights` over the same
+   * triangles as the surface. A NaN corner makes its triangles NaN.
+   */
+  sampleField(field: Float32Array, x: number, z: number): number {
+    const res = this.resolution;
     const gx = (x + this.halfSize) / this.cellSize;
     const gz = (z + this.halfSize) / this.cellSize;
-    const max = this.resolution - 1;
+    const max = res - 1;
     const cx = gx < 0 ? 0 : gx > max ? max : gx;
     const cz = gz < 0 ? 0 : gz > max ? max : gz;
     let i = Math.floor(cx);
@@ -60,13 +69,14 @@ export class Terrain implements HeightField {
     if (j >= max) j = max - 1;
     const fx = cx - i;
     const fz = cz - j;
-    const h00 = this.vertexHeight(i, j);
-    const h11 = this.vertexHeight(i + 1, j + 1);
+    const k = j * res + i;
+    const h00 = field[k]!;
+    const h11 = field[k + res + 1]!;
     if (fx >= fz) {
-      const h10 = this.vertexHeight(i + 1, j);
+      const h10 = field[k + 1]!;
       return h00 + fx * (h10 - h00) + fz * (h11 - h10);
     }
-    const h01 = this.vertexHeight(i, j + 1);
+    const h01 = field[k + res]!;
     return h00 + fz * (h01 - h00) + fx * (h11 - h01);
   }
 

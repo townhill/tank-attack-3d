@@ -19,6 +19,32 @@ export const WORLD = {
   gravity: 9.81,
   rockCount: 75,
   structureCount: 24,
+  /** Rivers crossing a standard map; scales with the side length. */
+  riverCount: 1,
+  /** Lakes and ponds on a standard map; scale with the area. */
+  lakeCount: 1,
+  pondCount: 2,
+} as const;
+
+export const WATER = {
+  /** Water deeper than this stops a tank (metres). */
+  impassableDepth: 1.2,
+  /** Top-speed multiplier when wading at the impassable depth; shallower water slows less. */
+  wadingSpeedFactor: 0.45,
+  /** Cell size of the blocked-water distance field (metres). */
+  fieldCellSize: 2.5,
+} as const;
+
+export const BRIDGE = {
+  /** Half the road width between the kerbs: a heavy tank fits with room to steer. */
+  deckHalfWidth: 7,
+  /** Deck length resting on each bank beyond the river and its banks (metres). */
+  bankOverlap: 8,
+  /** Steepest gradient of the earth ramps leading up to a deck. */
+  maxRampGrade: 0.18,
+  /** Shortest and longest distance between neighbouring bridges along a river (metres). */
+  minSpacing: 220,
+  maxSpacing: 380,
 } as const;
 
 export type TankKind = 'player' | 'standard' | 'heavy' | 'scout';

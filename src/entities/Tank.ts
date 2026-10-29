@@ -81,6 +81,8 @@ export class Tank {
   damageFlash = 0;
   trackPhaseLeft = 0;
   trackPhaseRight = 0;
+  /** Index of the bridge the tank is crossing, or -1; kept up to date by the simulation. */
+  bridgeId = -1;
 
   readonly controls: TankControls = { throttle: 0, turn: 0, fire: false };
   readonly prev: TankSnapshot = { x: 0, y: 0, z: 0, turretYaw: 0, gunPitch: 0, orientation: new Quaternion() };
@@ -107,6 +109,7 @@ export class Tank {
     this.heading = wrapAngle(heading);
     this.speed = 0;
     this.angularVelocity = 0;
+    this.bridgeId = -1;
     this.settleOnGround(ground, 0);
     this.aimDirection.set(Math.sin(heading), 0, -Math.cos(heading));
     this.saveSnapshot();

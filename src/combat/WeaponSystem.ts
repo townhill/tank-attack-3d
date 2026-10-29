@@ -65,7 +65,7 @@ export function segmentVsTank(
   return segmentVsAabb(localA.x, localA.y - h.y, localA.z, localB.x, localB.y - h.y, localB.z, h.x, h.y, h.z);
 }
 
-export type HitSurface = 'tank' | 'obstacle' | 'terrain' | 'expired';
+export type HitSurface = 'tank' | 'obstacle' | 'terrain' | 'water' | 'bridge' | 'expired';
 
 export interface ProjectileHit {
   surface: HitSurface;

@@ -158,6 +158,28 @@ describe('Terrain.heightAt', () => {
   });
 });
 
+describe('Terrain.sampleField', () => {
+  it('interpolates a per-vertex field over exactly the triangles heightAt uses', () => {
+    const terrain = new Terrain(50, 5);
+    const rng = new Random(11);
+    for (let k = 0; k < terrain.heights.length; k++) terrain.heights[k] = rng.range(-6, 6);
+    const field = terrain.heights.slice();
+    for (let n = 0; n < 200; n++) {
+      const x = rng.range(-60, 60);
+      const z = rng.range(-60, 60);
+      expect(terrain.sampleField(field, x, z)).toBe(terrain.heightAt(x, z));
+    }
+  });
+
+  it('gives NaN only in triangles that touch a NaN vertex', () => {
+    const terrain = new Terrain(50, 5);
+    const field = new Float32Array(terrain.heights.length).fill(2);
+    field[terrain.index(10, 10)] = Number.NaN;
+    expect(terrain.sampleField(field, terrain.vertexX(10) + 1, terrain.vertexZ(10) + 1)).toBeNaN();
+    expect(terrain.sampleField(field, terrain.vertexX(12) + 1, terrain.vertexZ(12) + 1)).toBe(2);
+  });
+});
+
 describe('Terrain normals and slopes', () => {
   const origin = { x: 0, y: 0, z: 0 };
 
@@ -323,11 +345,29 @@ describe('generateWorld', () => {
     }
   });
 
-  it.each([seedA, seedB, 99999])('has no slope steeper than 0.6 anywhere in the playable area (seed %i)', (seed) => {
+  it.each([seedA, 253408])('keeps the banks, levees and bridge approaches a tank can reach no steeper than 0.6 (seed %i)', (seed) => {
+    // A fine grid over the carved ground near the water; 253408 has the steepest bank found across 40 seeds.
+    const world = seed === seedA ? worldA : generateWorld(seed);
+    let maxSlope = 0;
+    for (let x = -490; x <= 490; x += 2.5) {
+      for (let z = -490; z <= 490; z += 2.5) {
+        const clearance = world.water.blockedDistance(x, z);
+        if (clearance < 3 || clearance > 40) continue;
+        maxSlope = Math.max(maxSlope, world.terrain.slopeAt(x, z));
+      }
+    }
+    expect(maxSlope).toBeLessThan(0.6);
+  });
+
+  it.each([seedA, seedB, 99999])('has no slope steeper than 0.6 anywhere a tank can drive (seed %i)', (seed) => {
     const world = seed === seedA ? worldA : seed === seedB ? worldB : generateWorld(seed);
     let maxSlope = 0;
     for (let x = -480; x <= 480; x += 10) {
-      for (let z = -480; z <= 480; z += 10) maxSlope = Math.max(maxSlope, world.terrain.slopeAt(x, z));
+      for (let z = -480; z <= 480; z += 10) {
+        // Deep channels and the ground under bridge spans are closed to tanks; slopeAt samples 2 m either side.
+        if (world.water.blockedDistance(x, z) < 3) continue;
+        maxSlope = Math.max(maxSlope, world.terrain.slopeAt(x, z));
+      }
     }
     expect(maxSlope).toBeLessThan(0.6);
   });
@@ -347,6 +387,9 @@ describe('generateWorld', () => {
       expect(opts.rockCount).toBe(WORLD.rockCount * scale * scale);
       expect(opts.cellSize).toBe(WORLD.cellSize);
       expect(opts.spawnClearRadius).toBe(WORLD.spawnClearRadius);
+      expect(opts.rivers).toBe(WORLD.riverCount * scale);
+      expect(opts.lakes).toBe(WORLD.lakeCount * scale * scale);
+      expect(opts.ponds).toBe(WORLD.pondCount * scale * scale);
     });
 
     it('a huge world fills its bigger square with obstacles, all inside it and clear of spawn', () => {
@@ -377,6 +420,9 @@ describe('generateWorld', () => {
       rockCount: 6,
       structureCount: 3,
       spawnClearRadius: 20,
+      rivers: 0,
+      lakes: 0,
+      ponds: 0,
     });
     expect(world.terrain.halfSize).toBe(200);
     expect(world.playableHalfSize).toBe(150);

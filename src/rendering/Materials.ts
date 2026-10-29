@@ -9,11 +9,11 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { TankKind } from '../config/settings';
 import type { GraphicsModeSpec } from './GraphicsModes';
 
-export type SolidRole = TankKind | 'rock' | 'structure' | 'mountain' | 'wreck';
-export type EdgeRole = 'rock' | 'structure' | 'mountain' | 'boundary';
+export type SolidRole = TankKind | 'rock' | 'structure' | 'mountain' | 'wreck' | 'bridge';
+export type EdgeRole = 'rock' | 'structure' | 'mountain' | 'boundary' | 'bridge' | 'shore';
 
-const SOLID_ROLES: readonly SolidRole[] = ['player', 'standard', 'heavy', 'scout', 'rock', 'structure', 'mountain', 'wreck'];
-const EDGE_ROLES: readonly EdgeRole[] = ['rock', 'structure', 'mountain', 'boundary'];
+const SOLID_ROLES: readonly SolidRole[] = ['player', 'standard', 'heavy', 'scout', 'rock', 'structure', 'mountain', 'wreck', 'bridge'];
+const EDGE_ROLES: readonly EdgeRole[] = ['rock', 'structure', 'mountain', 'boundary', 'bridge', 'shore'];
 
 function createSolid(): MeshStandardMaterial {
   return new MeshStandardMaterial({
@@ -53,6 +53,11 @@ export class MaterialLibrary {
     return this.spec;
   }
 
+  /** True while Classic's see-through wireframe hides every occluding solid. */
+  get hidesSolids(): boolean {
+    return this.seeThrough;
+  }
+
   /** Tracks a line material so resolution changes reach it. */
   register(material: LineMaterial): LineMaterial {
     material.resolution.set(this.width.w, this.width.h);
@@ -90,6 +95,7 @@ export class MaterialLibrary {
       structure: spec.structure.solid,
       mountain: spec.mountains.solid,
       wreck: spec.solidStyle === 'shaded' ? 0x1c1a1a : 0x050404,
+      bridge: spec.bridge.solid,
     };
     for (const role of SOLID_ROLES) {
       const m = this.solids[role];
@@ -106,6 +112,8 @@ export class MaterialLibrary {
     this.edges.structure.color.setHex(spec.structure.edge);
     this.edges.mountain.color.setHex(spec.mountains.edge);
     this.edges.boundary.color.setHex(spec.boundary);
+    this.edges.bridge.color.setHex(spec.bridge.edge);
+    this.edges.shore.color.setHex(spec.water.shore);
     for (const role of EDGE_ROLES) this.edges[role].linewidth = spec.edgeWidth * (role === 'mountain' ? 1.15 : 1);
     this.edges.boundary.linewidth = spec.edgeWidth * 1.3;
   }
