@@ -141,6 +141,19 @@ Accuracy:
 | Damage to you | ×0.6 | ×1 | ×1.25 |
 | Score multiplier | ×0.75 | ×1 | ×1.5 |
 
+### Map size
+
+Choose the battlefield size on the main menu. It is saved with your settings and applies to the next new game.
+
+| | Standard | Large | Huge |
+|---|---|---|---|
+| Playable area | 1 × 1 km | 2 × 2 km | 3 × 3 km |
+| Rocks and structures | up to 99 | up to 396 | up to 891 |
+
+- Obstacle counts grow with the area, so cover is equally dense on every size.
+- Enemy waves still spawn 260–480 m from you, so fights start just as quickly. The extra space is for manoeuvring and flanking.
+- Huge draws roughly four times as many triangles as Standard. If your GPU struggles, *Auto-reduce quality* (on by default) steps the quality down.
+
 ### HUD, radar and tactical map
 
 **HUD:**
