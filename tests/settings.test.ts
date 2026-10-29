@@ -41,6 +41,18 @@ describe('sanitizeSettings', () => {
     expect(s.mapIntel).toBe(DEFAULT_SETTINGS.mapIntel);
   });
 
+  it('defaults to the standard map size and keeps a valid one', () => {
+    expect(DEFAULT_SETTINGS.mapSize).toBe('standard');
+    expect(sanitizeSettings({ mapSize: 'large' }).mapSize).toBe('large');
+    expect(sanitizeSettings({ mapSize: 'huge' }).mapSize).toBe('huge');
+  });
+
+  it('falls back to the standard map size for missing or unknown values', () => {
+    expect(sanitizeSettings({}).mapSize).toBe('standard');
+    expect(sanitizeSettings({ mapSize: 'galactic' }).mapSize).toBe('standard');
+    expect(sanitizeSettings({ mapSize: 3 }).mapSize).toBe('standard');
+  });
+
   it('clamps numbers into range and rejects non-finite numbers', () => {
     const s = sanitizeSettings({ fov: 500, masterVolume: -2, mouseSensitivity: Number.NaN, bloomStrength: Number.POSITIVE_INFINITY });
     expect(s.fov).toBe(100);

@@ -38,6 +38,22 @@ describe('Simulation', () => {
     }
   });
 
+  it('builds a bigger battlefield for the large map size and keeps tanks inside it', () => {
+    const sim = new Simulation({ seed: 77, difficulty: 'hard', firstWaveDelay: 0.5, mapSize: 'large' });
+    expect(sim.world.playableHalfSize).toBe(1000);
+    run(sim, 20);
+    expect(sim.enemies.length).toBeGreaterThan(0);
+    for (const t of sim.tanks) {
+      expect(Math.abs(t.x)).toBeLessThanOrEqual(sim.world.playableHalfSize);
+      expect(Math.abs(t.z)).toBeLessThanOrEqual(sim.world.playableHalfSize);
+    }
+  });
+
+  it('uses the standard battlefield when no map size is given', () => {
+    const sim = new Simulation({ seed: 77, difficulty: 'normal', firstWaveDelay: 999 });
+    expect(sim.world.playableHalfSize).toBe(500);
+  });
+
   it('enemies engage and damage a stationary player', () => {
     const sim = new Simulation({ seed: 99, difficulty: 'hard', firstWaveDelay: 0.5 });
     const events = run(sim, 120);

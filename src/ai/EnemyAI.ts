@@ -83,6 +83,8 @@ export class EnemyController {
     readonly kind: EnemyKind,
     private readonly rng: Random,
     difficulty: DifficultySpec,
+    /** Half extent of the battlefield's playable square; patrol goals stay inside it. */
+    private readonly playableHalfSize: number,
   ) {
     this.homeX = tank.x;
     this.homeZ = tank.z;
@@ -231,7 +233,7 @@ export class EnemyController {
   }
 
   private pickPatrolWaypoint(): void {
-    const limit = WORLD.playableHalfSize - 50;
+    const limit = this.playableHalfSize - 50;
     const angle = this.rng.range(0, TAU);
     const radius = this.rng.range(40, AI.patrolRadius);
     this.goalX = clamp(this.homeX + Math.cos(angle) * radius, -limit, limit);

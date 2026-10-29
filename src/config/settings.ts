@@ -242,6 +242,20 @@ export const DIFFICULTY: Readonly<Record<Difficulty, DifficultySpec>> = {
   },
 };
 
+export type MapSize = 'standard' | 'large' | 'huge';
+
+export interface MapSizeSpec {
+  readonly label: string;
+  /** Multiplier on the side length of the playable square (area grows with its square). */
+  readonly scale: number;
+}
+
+export const MAP_SIZES: Readonly<Record<MapSize, MapSizeSpec>> = {
+  standard: { label: 'Standard', scale: 1 },
+  large: { label: 'Large', scale: 2 },
+  huge: { label: 'Huge', scale: 3 },
+};
+
 export const WAVES = {
   baseEnemyCount: 3,
   enemiesPerWave: 2,

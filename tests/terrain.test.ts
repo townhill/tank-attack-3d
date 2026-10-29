@@ -4,7 +4,7 @@ import type { Obstacle, ObstacleShape } from '../src/world/Obstacle';
 import { boundRadiusOf, buildingStoreys, STOREY_HEIGHT } from '../src/world/Obstacle';
 import { ObstacleGrid } from '../src/world/ObstacleGrid';
 import { Terrain } from '../src/world/Terrain';
-import { generateWorld, MAX_BUILDING_SLOPE } from '../src/world/WorldGenerator';
+import { DEFAULT_WORLD_OPTIONS, generateWorld, MAX_BUILDING_SLOPE, worldOptionsFor } from '../src/world/WorldGenerator';
 import { Random } from '../src/utils/random';
 
 /** Terrain whose height is the plane `slopeX * x + slopeZ * z`. */
@@ -330,6 +330,43 @@ describe('generateWorld', () => {
       for (let z = -480; z <= 480; z += 10) maxSlope = Math.max(maxSlope, world.terrain.slopeAt(x, z));
     }
     expect(maxSlope).toBeLessThan(0.6);
+  });
+
+  describe('map sizes', () => {
+    const margin = WORLD.terrainHalfSize - WORLD.playableHalfSize;
+
+    it('standard options are the defaults', () => {
+      expect(worldOptionsFor('standard')).toEqual(DEFAULT_WORLD_OPTIONS);
+    });
+
+    it.each([['large', 2], ['huge', 3]] as const)('%s scales the side length by %i and keeps density and margins', (size, scale) => {
+      const opts = worldOptionsFor(size);
+      expect(opts.playableHalfSize).toBe(WORLD.playableHalfSize * scale);
+      expect(opts.terrainHalfSize).toBe(WORLD.playableHalfSize * scale + margin);
+      expect(opts.structureCount).toBe(WORLD.structureCount * scale * scale);
+      expect(opts.rockCount).toBe(WORLD.rockCount * scale * scale);
+      expect(opts.cellSize).toBe(WORLD.cellSize);
+      expect(opts.spawnClearRadius).toBe(WORLD.spawnClearRadius);
+    });
+
+    it('a huge world fills its bigger square with obstacles, all inside it and clear of spawn', () => {
+      const opts = worldOptionsFor('huge');
+      const huge = generateWorld(seedA, opts);
+      expect(huge.playableHalfSize).toBe(opts.playableHalfSize);
+      expect(huge.terrain.halfSize).toBe(opts.terrainHalfSize);
+      const structures = (w: typeof huge): number => w.obstacles.filter((o) => o.kind !== 'rock').length;
+      expect(structures(huge)).toBeGreaterThan(structures(worldA) * 4);
+      expect(huge.obstacles.some((o) => Math.abs(o.x) > WORLD.playableHalfSize * 2)).toBe(true);
+      for (const ob of huge.obstacles) {
+        expect(Math.abs(ob.x) + ob.boundRadius).toBeLessThanOrEqual(opts.playableHalfSize);
+        expect(Math.abs(ob.z) + ob.boundRadius).toBeLessThanOrEqual(opts.playableHalfSize);
+        expect(Math.hypot(ob.x, ob.z) - ob.boundRadius).toBeGreaterThanOrEqual(opts.spawnClearRadius - 1e-9);
+      }
+      const edge = opts.playableHalfSize + 150;
+      for (const [x, z] of [[edge, 0], [-edge, 0], [0, edge], [0, -edge]] as const) {
+        expect(huge.heightAt(x, z)).toBeGreaterThan(25);
+      }
+    });
   });
 
   it('honours custom generation options', () => {

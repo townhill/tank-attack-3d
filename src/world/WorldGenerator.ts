@@ -2,7 +2,8 @@
  * Seeded procedural battlefield generation. The same seed always produces the
  * same heightfield and obstacle layout.
  */
-import { WORLD } from '../config/settings';
+import type { MapSize } from '../config/settings';
+import { MAP_SIZES, WORLD } from '../config/settings';
 import { lerp, smoothstep, TAU } from '../utils/math';
 import { SimplexNoise2D } from '../utils/noise';
 import { Random } from '../utils/random';
@@ -20,14 +21,26 @@ export interface WorldGenOptions {
   readonly spawnClearRadius: number;
 }
 
-export const DEFAULT_WORLD_OPTIONS: WorldGenOptions = {
-  terrainHalfSize: WORLD.terrainHalfSize,
-  cellSize: WORLD.cellSize,
-  playableHalfSize: WORLD.playableHalfSize,
-  rockCount: WORLD.rockCount,
-  structureCount: WORLD.structureCount,
-  spawnClearRadius: WORLD.spawnClearRadius,
-};
+/**
+ * Generation options for a map size: the playable square scales by side
+ * length, the boundary mountain margin keeps its width and obstacle counts
+ * scale with area so density stays the same.
+ */
+export function worldOptionsFor(size: MapSize): WorldGenOptions {
+  const scale = MAP_SIZES[size].scale;
+  const playableHalfSize = WORLD.playableHalfSize * scale;
+  const area = scale * scale;
+  return {
+    terrainHalfSize: playableHalfSize + (WORLD.terrainHalfSize - WORLD.playableHalfSize),
+    cellSize: WORLD.cellSize,
+    playableHalfSize,
+    rockCount: WORLD.rockCount * area,
+    structureCount: WORLD.structureCount * area,
+    spawnClearRadius: WORLD.spawnClearRadius,
+  };
+}
+
+export const DEFAULT_WORLD_OPTIONS: WorldGenOptions = worldOptionsFor('standard');
 
 /** Maximum gradient tolerated under an obstacle's footprint. */
 const MAX_OBSTACLE_SLOPE = 0.32;

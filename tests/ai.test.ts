@@ -529,17 +529,19 @@ interface HarnessOptions {
   obstacles?: Obstacle[];
   difficulty?: DifficultySpec;
   ctxRng?: Random;
+  /** Battlefield to use instead of the default flat one (obstacles are then ignored). */
+  world?: World;
 }
 
 function makeHarness(options: HarnessOptions = {}): Harness {
-  const world = makeFlatWorld(options.obstacles ?? []);
+  const world = options.world ?? makeFlatWorld(options.obstacles ?? []);
   const kind = options.kind ?? 'standard';
   const [ex, ez] = options.enemyAt ?? [0, 200];
   const [px, pz] = options.playerAt ?? [0, 0];
   const player = placeTank(world, 'player', 0, px, pz, 0);
   const enemy = placeTank(world, kind, 1, ex, ez, options.enemyHeading ?? 0);
   const difficulty = options.difficulty ?? TEST_DIFFICULTY;
-  const controller = new EnemyController(enemy, kind, new Random(11), difficulty);
+  const controller = new EnemyController(enemy, kind, new Random(11), difficulty, world.playableHalfSize);
   return { world, player, enemy, controller, difficulty, rng: options.ctxRng ?? new Random(12), extraTanks: [], time: 0 };
 }
 
@@ -978,6 +980,19 @@ describe('EnemyController: movement behaviour', () => {
     }
     expect(Math.abs(h.enemy.x)).toBeLessThan(h.world.playableHalfSize + 20);
     expect(Math.abs(h.enemy.z)).toBeLessThan(h.world.playableHalfSize + 20);
+  });
+
+  it('patrols around its home near the edge of a large battlefield instead of being pulled inwards', () => {
+    const world = new World(1, new Terrain(1100, 5), [], 1000);
+    const h = makeHarness({ world, enemyAt: [900, 0], enemyHeading: -Math.PI / 2 });
+    let minX = h.enemy.x;
+    for (let i = 0; i < 60 * 60; i++) {
+      tick(h, { think: i % 6 === 0, move: true });
+      minX = Math.min(minX, h.enemy.x);
+    }
+    expect(h.controller.engaged).toBe(false);
+    expect(minX).toBeGreaterThan(900 - AI.patrolRadius - 30);
+    expect(Math.abs(h.enemy.x)).toBeLessThan(world.playableHalfSize);
   });
 
   it('a pursuing standard tank closes the distance to a distant player', () => {
