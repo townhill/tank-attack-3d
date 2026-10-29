@@ -2,7 +2,7 @@
  * Player-adjustable preferences, persisted to browser storage and validated
  * on load so corrupt or outdated data can never break the game.
  */
-import type { Difficulty } from './settings';
+import type { Difficulty, MapSize } from './settings';
 import type { KeyValueStore } from '../game/Scoring';
 
 export type GraphicsModeId = 'classic' | 'neon' | 'hybrid';
@@ -13,6 +13,8 @@ export type MapIntel = 'full' | 'radar';
 export interface UserSettings {
   graphicsMode: GraphicsModeId;
   difficulty: Difficulty;
+  /** Battlefield size for the next new game. */
+  mapSize: MapSize;
   quality: QualityLevel;
   autoQuality: boolean;
   /** Bloom multiplier applied on top of each graphics mode's own bloom (0..2). */
@@ -42,6 +44,7 @@ export interface UserSettings {
 export const DEFAULT_SETTINGS: Readonly<UserSettings> = {
   graphicsMode: 'neon',
   difficulty: 'normal',
+  mapSize: 'standard',
   quality: 'high',
   autoQuality: true,
   bloomStrength: 1,
@@ -68,6 +71,7 @@ export const DEFAULT_SETTINGS: Readonly<UserSettings> = {
 export const GRAPHICS_MODES: readonly GraphicsModeId[] = ['classic', 'neon', 'hybrid'];
 export const QUALITY_LEVELS: readonly QualityLevel[] = ['low', 'medium', 'high'];
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
+export const MAP_SIZE_IDS: readonly MapSize[] = ['standard', 'large', 'huge'];
 
 function pickEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -89,6 +93,7 @@ export function sanitizeSettings(raw: unknown): UserSettings {
   return {
     graphicsMode: pickEnum(src.graphicsMode, GRAPHICS_MODES, d.graphicsMode),
     difficulty: pickEnum(src.difficulty, DIFFICULTIES, d.difficulty),
+    mapSize: pickEnum(src.mapSize, MAP_SIZE_IDS, d.mapSize),
     quality: pickEnum(src.quality, QUALITY_LEVELS, d.quality),
     autoQuality: pickBoolean(src.autoQuality, d.autoQuality),
     bloomStrength: pickNumber(src.bloomStrength, 0, 2, d.bloomStrength),

@@ -18,7 +18,7 @@ export const WORLD = {
   spawnClearRadius: 55,
   gravity: 9.81,
   rockCount: 75,
-  structureCount: 18,
+  structureCount: 24,
 } as const;
 
 export type TankKind = 'player' | 'standard' | 'heavy' | 'scout';
@@ -240,6 +240,20 @@ export const DIFFICULTY: Readonly<Record<Difficulty, DifficultySpec>> = {
     scoreMultiplier: 1.5,
     waveRepair: 20,
   },
+};
+
+export type MapSize = 'standard' | 'large' | 'huge';
+
+export interface MapSizeSpec {
+  readonly label: string;
+  /** Multiplier on the side length of the playable square (area grows with its square). */
+  readonly scale: number;
+}
+
+export const MAP_SIZES: Readonly<Record<MapSize, MapSizeSpec>> = {
+  standard: { label: 'Standard', scale: 1 },
+  large: { label: 'Large', scale: 2 },
+  huge: { label: 'Huge', scale: 3 },
 };
 
 export const WAVES = {

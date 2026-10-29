@@ -7,7 +7,7 @@ Everything is original code and procedurally generated geometry and sound. There
 - **Three graphics modes on one simulation:** Classic Vector (green phosphor), **Modern Neon Vector** (default, true hidden-line removal) and Hybrid 3D (shaded armour with shadows). Switching mode never resets the game.
 - **Three cameras:** gunner (first person), chase (third person) and tactical (overhead).
 - **Three enemy types:** standard, heavy and scout, each with distinct AI behaviour, across escalating waves.
-- **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks and futuristic structures.
+- **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks, futuristic structures and two- to four-storey buildings.
 
 ---
 
@@ -141,6 +141,19 @@ Accuracy:
 | Damage to you | ×0.6 | ×1 | ×1.25 |
 | Score multiplier | ×0.75 | ×1 | ×1.5 |
 
+### Map size
+
+Choose the battlefield size on the main menu. It is saved with your settings and applies to the next new game.
+
+| | Standard | Large | Huge |
+|---|---|---|---|
+| Playable area | 1 × 1 km | 2 × 2 km | 3 × 3 km |
+| Rocks and structures | up to 99 | up to 396 | up to 891 |
+
+- Obstacle counts grow with the area, so cover is equally dense on every size.
+- Enemy waves still spawn 260–480 m from you, so fights start just as quickly. The extra space is for manoeuvring and flanking.
+- Huge draws roughly four times as many triangles as Standard. If your GPU struggles, *Auto-reduce quality* (on by default) steps the quality down.
+
 ### HUD, radar and tactical map
 
 **HUD:**
@@ -163,7 +176,7 @@ Accuracy:
 - **What it shows:**
   - The whole battlefield with shaded relief and contour lines.
   - A–J / 1–10 grid references, a scale bar and a legend.
-  - Every obstacle at its real footprint.
+  - Every obstacle at its real footprint. Buildings show one tick per storey.
   - The player's heading and turret.
   - Every enemy with heading and a six-second motion vector, updated live.
   - Shells and wrecks.

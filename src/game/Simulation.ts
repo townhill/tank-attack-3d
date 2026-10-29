@@ -6,7 +6,7 @@
 import { EnemyController } from '../ai/EnemyAI';
 import { computeDamage, hitZone, applyDamage } from '../combat/DamageSystem';
 import { createProjectileHit, fireWeapon, stepProjectile } from '../combat/WeaponSystem';
-import type { Difficulty, DifficultySpec, EnemyKind } from '../config/settings';
+import type { Difficulty, DifficultySpec, EnemyKind, MapSize } from '../config/settings';
 import { AI, DAMAGE, DIFFICULTY, PROJECTILE, TANK_SPECS } from '../config/settings';
 import { ProjectilePool } from '../entities/Projectile';
 import type { Projectile } from '../entities/Projectile';
@@ -16,7 +16,7 @@ import { hashSeed, Random } from '../utils/random';
 import { circleVsObstacle, createPushResult } from '../world/Collision';
 import type { Obstacle } from '../world/Obstacle';
 import type { World } from '../world/World';
-import { generateWorld } from '../world/WorldGenerator';
+import { generateWorld, worldOptionsFor } from '../world/WorldGenerator';
 import type { GameEvent } from './events';
 import type { GameStats } from './Scoring';
 import { createStats, killScore, waveClearBonus } from './Scoring';
@@ -47,6 +47,8 @@ export type SimPhase = 'playing' | 'dying' | 'over';
 export interface SimulationOptions {
   readonly seed: number;
   readonly difficulty: Difficulty;
+  /** Battlefield size to generate; defaults to standard. Ignored when `world` is given. */
+  readonly mapSize?: MapSize;
   /** Reuse a pre-generated world (e.g. on restart) instead of generating one. */
   readonly world?: World;
   readonly firstWaveDelay?: number;
@@ -87,7 +89,7 @@ export class Simulation {
   private readonly nearby: Obstacle[] = [];
 
   constructor(options: SimulationOptions) {
-    this.world = options.world ?? generateWorld(options.seed);
+    this.world = options.world ?? generateWorld(options.seed, worldOptionsFor(options.mapSize ?? 'standard'));
     this.difficulty = options.difficulty;
     this.difficultySpec = DIFFICULTY[options.difficulty];
     this.rng = new Random(options.seed ^ hashSeed(options.difficulty));
@@ -388,7 +390,7 @@ export class Simulation {
       const tank = new Tank(this.nextTankId++, spec, 'enemy');
       const towardsPlayer = headingOf(this.player.x - x, this.player.z - z);
       tank.placeAt(x, z, towardsPlayer + this.rng.range(-1.2, 1.2), world.terrain);
-      const controller = new EnemyController(tank, kind, this.rng, this.difficultySpec);
+      const controller = new EnemyController(tank, kind, this.rng, this.difficultySpec, world.playableHalfSize);
       this.tanks.push(tank);
       this.enemies.push({ tank, kind, controller });
       this.events.push({ type: 'enemySpawned', tankId: tank.id, kind, x, z });

@@ -11,9 +11,11 @@ import {
 import type { Obstacle, ObstacleKind, ObstacleShape } from '../src/world/Obstacle';
 import {
   boundRadiusOf,
+  buildingStoreys,
   hasTaperedProfile,
   pointInsideObstacle,
   profileScale,
+  STOREY_HEIGHT,
   toLocalX,
   toLocalZ,
   toWorldX,
@@ -94,12 +96,19 @@ describe('Obstacle geometry helpers', () => {
     expect(profileScale('rock', 0)).toBe(1);
     expect(profileScale('rock', 1)).toBeCloseTo(Math.sqrt(0.15), 12);
     expect(profileScale('tower', 1)).toBeCloseTo(0.65, 12);
-    for (const kind of ['block', 'bunker', 'wall', 'pylon'] as const) expect(profileScale(kind, 0.9)).toBe(1);
+    for (const kind of ['block', 'bunker', 'wall', 'pylon', 'building'] as const) expect(profileScale(kind, 0.9)).toBe(1);
   });
 
   it('hasTaperedProfile is true only for pyramid, rock and tower', () => {
     expect(['pyramid', 'rock', 'tower'].every((k) => hasTaperedProfile(k as ObstacleKind))).toBe(true);
-    expect(['block', 'bunker', 'wall', 'pylon'].some((k) => hasTaperedProfile(k as ObstacleKind))).toBe(false);
+    expect(['block', 'bunker', 'wall', 'pylon', 'building'].some((k) => hasTaperedProfile(k as ObstacleKind))).toBe(false);
+  });
+
+  it('buildingStoreys recovers the storey count from a building height', () => {
+    for (const storeys of [2, 3, 4]) {
+      const building = makeObstacle('building', box(8, 6), { height: storeys * STOREY_HEIGHT });
+      expect(buildingStoreys(building)).toBe(storeys);
+    }
   });
 
   it('pointInsideObstacle respects the vertical extent, the footprint and the yaw', () => {
@@ -384,6 +393,21 @@ describe('segmentVsObstacle', () => {
     it('a shot coming straight down onto the apex region hits the pyramid', () => {
       expect(shoot(pyramid, 0.5, 20, 0.5, 0.5, 0, 0.5)).toBeGreaterThan(0.4);
       expect(shoot(pyramid, 0.5, 20, 0.5, 0.5, 0, 0.5)).toBeLessThan(0.6);
+    });
+  });
+
+  describe('buildings of different storeys', () => {
+    const twoStorey = makeObstacle('building', box(8, 6), { height: 2 * STOREY_HEIGHT });
+    const fourStorey = makeObstacle('building', box(8, 6), { height: 4 * STOREY_HEIGHT });
+
+    it('a shot at 12 m clears a two-storey building but strikes a four-storey one', () => {
+      expect(shoot(twoStorey, -20, 12, 0, 20, 12, 0)).toBe(NO_HIT);
+      expect(shoot(fourStorey, -20, 12, 0, 20, 12, 0)).toBeCloseTo(0.3, 9);
+    });
+
+    it('a shot at ground-floor height strikes both', () => {
+      expect(shoot(twoStorey, -20, 2, 0, 20, 2, 0)).toBeCloseTo(0.3, 9);
+      expect(shoot(fourStorey, -20, 2, 0, 20, 2, 0)).toBeCloseTo(0.3, 9);
     });
   });
 

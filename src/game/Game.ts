@@ -5,6 +5,7 @@
 import { Vector3 } from 'three';
 import type { AudioEnemy, AudioFrame } from '../audio/AudioManager';
 import { AudioManager } from '../audio/AudioManager';
+import type { MapSize } from '../config/settings';
 import { DIFFICULTY, PROJECTILE, SIM_DT, TANK_SPECS } from '../config/settings';
 import type { UserSettings } from '../config/userSettings';
 import { browserStorage, GRAPHICS_MODES, QUALITY_LEVELS, SettingsStore } from '../config/userSettings';
@@ -17,7 +18,7 @@ import { QUALITY_PRESETS, Renderer } from '../rendering/Renderer';
 import { WorldView } from '../rendering/WorldView';
 import { HUD } from '../ui/HUD';
 import type { GameOverSummary, UiSoundKind } from '../ui/Menu';
-import { Menu } from '../ui/Menu';
+import { mapSizeLabel, Menu } from '../ui/Menu';
 import { PerfOverlay } from '../ui/PerfOverlay';
 import { Radar } from '../ui/Radar';
 import { TacticalMap } from '../ui/TacticalMap';
@@ -70,6 +71,8 @@ export class Game {
   private best: number;
   private sim: Simulation;
   private seed: number;
+  /** Map size the current world was generated at (settings may since have changed). */
+  private mapSize: MapSize;
   private readonly worldView: WorldView;
   private readonly cameraState = new CameraState('third');
   private readonly aim = new AimState();
@@ -111,6 +114,7 @@ export class Game {
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager(this.canvas);
     this.seed = seedFromUrl() ?? randomSeed();
+    this.mapSize = this.settings.mapSize;
     this.sim = this.createAttractSimulation();
     this.worldView = new WorldView(this.renderer, this.sim.world, PROJECTILE.poolSize, this.rng);
     this.cameraManager = new CameraManager(this.renderer.camera, this.sim.world, this.rng);
@@ -159,7 +163,7 @@ export class Game {
   // ---------------------------------------------------------------- setup
 
   private createAttractSimulation(): Simulation {
-    return new Simulation({ seed: this.seed, difficulty: this.settings.difficulty, firstWaveDelay: Number.POSITIVE_INFINITY });
+    return new Simulation({ seed: this.seed, difficulty: this.settings.difficulty, mapSize: this.mapSize, firstWaveDelay: Number.POSITIVE_INFINITY });
   }
 
   private bindEvents(): void {
@@ -255,9 +259,11 @@ export class Game {
   // ---------------------------------------------------------------- states
 
   private startNewGame(seed: number): void {
-    const sameWorld = seed === this.sim.world.seed;
+    const mapSize = this.settings.mapSize;
+    const sameWorld = seed === this.sim.world.seed && mapSize === this.mapSize;
     this.seed = seed;
-    this.sim = new Simulation({ seed, difficulty: this.settings.difficulty, world: sameWorld ? this.sim.world : undefined });
+    this.mapSize = mapSize;
+    this.sim = new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, world: sameWorld ? this.sim.world : undefined });
     if (!sameWorld) {
       this.worldView.setWorld(this.sim.world);
       this.worldView.applyMode(GRAPHICS_MODE_SPECS[this.settings.graphicsMode], this.settings, QUALITY_PRESETS[this.settings.quality].shadows);
@@ -279,7 +285,8 @@ export class Game {
     this.audio.stopAll();
     this.audio.setPaused(false);
     this.updateRadarVisibility();
-    this.hud.showBanner('ENGAGE', `${DIFFICULTY[this.settings.difficulty].label.toUpperCase()}  ·  BATTLEFIELD ${seed}`, 2.4);
+    const banner = `${DIFFICULTY[this.settings.difficulty].label}  ·  ${mapSizeLabel(mapSize)}  ·  BATTLEFIELD ${seed}`;
+    this.hud.showBanner('ENGAGE', banner.toUpperCase(), 2.4);
     void this.requestLock();
   }
 
@@ -334,6 +341,7 @@ export class Game {
       hits: stats.hits,
       accuracy: accuracy(stats.shotsFired, stats.hits),
       difficulty: DIFFICULTY[this.sim.difficulty].label,
+      mapSize: mapSizeLabel(this.mapSize),
       seed: this.seed,
     };
     this.menu.showGameOver(summary);
@@ -660,6 +668,8 @@ export class Game {
       graphicsMode: this.settings.graphicsMode,
       quality: this.settings.quality,
       seed: this.seed,
+      mapSize: this.mapSize,
+      playableHalfSize: this.sim.world.playableHalfSize,
       player: { x: p.x, z: p.z, heading: p.heading, speed: p.speed, health: p.health, turretYaw: p.turretYaw, gunPitch: p.gunPitch, alive: p.alive },
       enemies: this.sim.enemies.map((e) => ({ id: e.tank.id, kind: e.kind, x: e.tank.x, z: e.tank.z, alive: e.tank.alive, state: e.controller.state })),
       stats: { ...this.sim.stats },

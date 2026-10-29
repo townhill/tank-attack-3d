@@ -2,12 +2,13 @@
  * Main / pause menu, settings, controls reference and game-over summary.
  * Plain accessible HTML (real buttons and form controls, keyboard friendly).
  */
-import type { Difficulty } from '../config/settings';
-import { DIFFICULTY } from '../config/settings';
+import type { Difficulty, MapSize } from '../config/settings';
+import { DIFFICULTY, MAP_SIZES, WORLD } from '../config/settings';
 import type { GraphicsModeId, UserSettings } from '../config/userSettings';
-import { DIFFICULTIES, GRAPHICS_MODES } from '../config/userSettings';
+import { DIFFICULTIES, GRAPHICS_MODES, MAP_SIZE_IDS } from '../config/userSettings';
 import { GRAPHICS_MODE_SPECS } from '../rendering/GraphicsModes';
 import { HELP_HTML } from './HUD';
+import { formatDistance } from './MapProjection';
 
 export type MenuScreen = 'main' | 'settings' | 'controls' | 'gameover';
 export type UiSoundKind = 'click' | 'hover' | 'toggle' | 'back' | 'start';
@@ -33,6 +34,7 @@ export interface GameOverSummary {
   readonly hits: number;
   readonly accuracy: number;
   readonly difficulty: string;
+  readonly mapSize: string;
   readonly seed: number;
 }
 
@@ -182,6 +184,13 @@ export class Menu {
       'toggle',
       this.canContinue ? 'Applies to the next new game' : difficultyBlurb(this.settings.difficulty),
     );
+    this.button(
+      this.mainButtons,
+      `Map size: ${mapSizeLabel(this.settings.mapSize)}`,
+      () => { this.cycleMapSize(); },
+      'toggle',
+      this.canContinue ? 'Applies to the next new game' : mapSizeBlurb(this.settings.mapSize),
+    );
     this.button(this.mainButtons, 'Controls', () => { this.showScreen('controls'); });
     this.button(this.mainButtons, 'Settings', () => { this.showScreen('settings'); });
     this.bestLine.textContent = `BEST SCORE ${this.best.toLocaleString()}  ·  H FOR CONTROLS IN GAME`;
@@ -195,6 +204,11 @@ export class Menu {
   private cycleDifficulty(): void {
     const i = DIFFICULTIES.indexOf(this.settings.difficulty);
     this.commit({ ...this.settings, difficulty: DIFFICULTIES[(i + 1) % DIFFICULTIES.length]! });
+  }
+
+  private cycleMapSize(): void {
+    const i = MAP_SIZE_IDS.indexOf(this.settings.mapSize);
+    this.commit({ ...this.settings, mapSize: MAP_SIZE_IDS[(i + 1) % MAP_SIZE_IDS.length]! });
   }
 
   private commit(next: UserSettings): void {
@@ -299,6 +313,7 @@ export class Menu {
     row('Hits', String(s.hits));
     row('Accuracy', `${Math.round(s.accuracy * 100)}%`);
     row('Difficulty', s.difficulty);
+    row('Battlefield size', s.mapSize);
     row('Battlefield seed', String(s.seed));
     this.showScreen('gameover');
   }
@@ -335,6 +350,17 @@ function difficultyBlurb(d: Difficulty): string {
     case 'hard':
       return 'Fast reactions, full target leading, larger waves';
   }
+}
+
+function mapSizeBlurb(size: MapSize): string {
+  const side = formatDistance(2 * WORLD.playableHalfSize * MAP_SIZES[size].scale);
+  return `${side} × ${side} battlefield`;
+}
+
+/** "Standard", "Large (2×)", "Huge (3×)". */
+export function mapSizeLabel(size: MapSize): string {
+  const spec = MAP_SIZES[size];
+  return spec.scale === 1 ? spec.label : `${spec.label} (${spec.scale}×)`;
 }
 
 export function graphicsModeLabel(mode: GraphicsModeId): string {

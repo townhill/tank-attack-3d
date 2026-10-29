@@ -5,6 +5,7 @@
  */
 import type { TankKind } from '../config/settings';
 import type { Obstacle } from '../world/Obstacle';
+import { buildingStoreys } from '../world/Obstacle';
 
 export type GraphicsModeId = 'classic' | 'neon' | 'hybrid';
 export type Rgb = readonly [number, number, number];
@@ -328,7 +329,8 @@ const BOUNDARY_DASH: number[] = [8, 5];
 /**
  * Draws an obstacle's real footprint centred on (x, y) at `pxPerMetre`, in a
  * north-up view, with a kind-specific detail: pyramid ridges, bunker roof,
- * solid blocks and walls, tower core, pylon cross, translucent rocks.
+ * building roof with storey ticks, solid blocks and walls, tower core, pylon
+ * cross, translucent rocks.
  */
 export function drawObstacleFootprint(
   ctx: CanvasRenderingContext2D,
@@ -377,7 +379,24 @@ export function drawObstacleFootprint(
     ctx.beginPath();
     traceRotatedRect(ctx, x, y, hx * 0.55, hz * 0.45, ob.yaw);
     ctx.stroke();
+  } else if (ob.kind === 'building' && hx > 4) {
+    strokeBuildingRoof(ctx, x, y, hx, hz, ob.yaw, buildingStoreys(ob));
   }
+}
+
+/** Roof parapet plus one tick per storey, so a building's height reads from the map. */
+function strokeBuildingRoof(ctx: CanvasRenderingContext2D, x: number, y: number, hx: number, hz: number, yaw: number, storeys: number): void {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  const lz = hz * 0.35;
+  ctx.beginPath();
+  traceRotatedRect(ctx, x, y, hx * 0.7, hz * 0.7, yaw);
+  for (let i = 0; i < storeys; i++) {
+    const lx = (i - (storeys - 1) / 2) * hx * 0.25;
+    ctx.moveTo(x + lx * c + lz * s, y + lx * s - lz * c);
+    ctx.lineTo(x + lx * c - lz * s, y + lx * s + lz * c);
+  }
+  ctx.stroke();
 }
 
 /** Fills and strokes the current path; `solid` > 0 adds an extra opaque fill in the stroke colour. */
@@ -407,6 +426,7 @@ export type LegendItem =
   | 'wreck'
   | 'shell'
   | 'structure'
+  | 'building'
   | 'rock'
   | 'boundary';
 
@@ -420,6 +440,7 @@ export const LEGEND_LABELS: Readonly<Record<LegendItem, string>> = {
   wreck: 'WRECK',
   shell: 'SHELL',
   structure: 'STRUCTURE',
+  building: 'BUILDING',
   rock: 'ROCK',
   boundary: 'BOUNDARY',
 };
@@ -467,6 +488,12 @@ export function drawLegendSymbol(ctx: CanvasRenderingContext2D, theme: TacticalT
       ctx.beginPath();
       traceRotatedRect(ctx, x, y, 6, 4, 0.3);
       paintFootprint(ctx, theme.obstacleFill, theme.obstacle, 0);
+      break;
+    case 'building':
+      ctx.beginPath();
+      traceRotatedRect(ctx, x, y, 7, 5, 0.3);
+      paintFootprint(ctx, theme.obstacleFill, theme.obstacle, 0);
+      strokeBuildingRoof(ctx, x, y, 7, 5, 0.3, 3);
       break;
     case 'rock':
       ctx.beginPath();

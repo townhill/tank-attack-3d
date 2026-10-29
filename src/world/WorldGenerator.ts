@@ -2,12 +2,13 @@
  * Seeded procedural battlefield generation. The same seed always produces the
  * same heightfield and obstacle layout.
  */
-import { WORLD } from '../config/settings';
+import type { MapSize } from '../config/settings';
+import { MAP_SIZES, WORLD } from '../config/settings';
 import { lerp, smoothstep, TAU } from '../utils/math';
 import { SimplexNoise2D } from '../utils/noise';
 import { Random } from '../utils/random';
 import type { Obstacle, ObstacleKind, ObstacleShape } from './Obstacle';
-import { boundRadiusOf, toWorldX, toWorldZ } from './Obstacle';
+import { boundRadiusOf, STOREY_HEIGHT, toWorldX, toWorldZ } from './Obstacle';
 import { Terrain } from './Terrain';
 import { World } from './World';
 
@@ -20,17 +21,31 @@ export interface WorldGenOptions {
   readonly spawnClearRadius: number;
 }
 
-export const DEFAULT_WORLD_OPTIONS: WorldGenOptions = {
-  terrainHalfSize: WORLD.terrainHalfSize,
-  cellSize: WORLD.cellSize,
-  playableHalfSize: WORLD.playableHalfSize,
-  rockCount: WORLD.rockCount,
-  structureCount: WORLD.structureCount,
-  spawnClearRadius: WORLD.spawnClearRadius,
-};
+/**
+ * Generation options for a map size: the playable square scales by side
+ * length, the boundary mountain margin keeps its width and obstacle counts
+ * scale with area so density stays the same.
+ */
+export function worldOptionsFor(size: MapSize): WorldGenOptions {
+  const scale = MAP_SIZES[size].scale;
+  const playableHalfSize = WORLD.playableHalfSize * scale;
+  const area = scale * scale;
+  return {
+    terrainHalfSize: playableHalfSize + (WORLD.terrainHalfSize - WORLD.playableHalfSize),
+    cellSize: WORLD.cellSize,
+    playableHalfSize,
+    rockCount: WORLD.rockCount * area,
+    structureCount: WORLD.structureCount * area,
+    spawnClearRadius: WORLD.spawnClearRadius,
+  };
+}
+
+export const DEFAULT_WORLD_OPTIONS: WorldGenOptions = worldOptionsFor('standard');
 
 /** Maximum gradient tolerated under an obstacle's footprint. */
 const MAX_OBSTACLE_SLOPE = 0.32;
+/** Stricter limit for buildings, so a hillside never swallows the ground floor. */
+export const MAX_BUILDING_SLOPE = 0.18;
 
 export function generateHeights(seed: number, opts: WorldGenOptions): Terrain {
   const terrain = new Terrain(opts.terrainHalfSize, opts.cellSize);
@@ -68,12 +83,12 @@ interface Placement {
   radius: number;
 }
 
-function footprintIsUsable(terrain: Terrain, x: number, z: number, radius: number): boolean {
+function footprintIsUsable(terrain: Terrain, x: number, z: number, radius: number, maxSlope = MAX_OBSTACLE_SLOPE): boolean {
   for (let a = 0; a < 6; a++) {
     const angle = (a / 6) * TAU;
-    if (terrain.slopeAt(x + Math.cos(angle) * radius, z + Math.sin(angle) * radius) > MAX_OBSTACLE_SLOPE) return false;
+    if (terrain.slopeAt(x + Math.cos(angle) * radius, z + Math.sin(angle) * radius) > maxSlope) return false;
   }
-  return terrain.slopeAt(x, z) <= MAX_OBSTACLE_SLOPE;
+  return terrain.slopeAt(x, z) <= maxSlope;
 }
 
 /** Lowest terrain height under the footprint, so obstacles never float. */
@@ -99,6 +114,8 @@ function footprintBase(terrain: Terrain, x: number, z: number, shape: ObstacleSh
 interface StructureTemplate {
   readonly kind: ObstacleKind;
   readonly weight: number;
+  /** Steepest ground tolerated under the footprint; defaults to MAX_OBSTACLE_SLOPE. */
+  readonly maxSlope?: number;
   make(rng: Random): { shape: ObstacleShape; height: number };
 }
 
@@ -109,6 +126,7 @@ const STRUCTURES: readonly StructureTemplate[] = [
   { kind: 'tower', weight: 2, make: (rng) => ({ shape: { type: 'circle', radius: rng.range(2.6, 3.4) }, height: rng.range(22, 32) }) },
   { kind: 'wall', weight: 2, make: (rng) => ({ shape: { type: 'box', halfX: rng.range(14, 22), halfZ: 1.4 }, height: rng.range(4.5, 6) }) },
   { kind: 'pylon', weight: 2, make: (rng) => ({ shape: { type: 'circle', radius: 1.6 }, height: rng.range(12, 16) }) },
+  { kind: 'building', weight: 4, maxSlope: MAX_BUILDING_SLOPE, make: (rng) => ({ shape: { type: 'box', halfX: rng.range(6, 10), halfZ: rng.range(5, 8) }, height: rng.int(2, 4) * STOREY_HEIGHT }) },
 ];
 
 function pickStructure(rng: Random): StructureTemplate {
@@ -160,7 +178,7 @@ function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions
     const z = rng.range(-limit, limit);
     const yaw = template.kind === 'pyramid' || template.kind === 'block' ? rng.range(0, Math.PI / 2) : rng.range(0, TAU);
     const radius = boundRadiusOf(shape);
-    if (!isFree(x, z, radius, 18) || !footprintIsUsable(terrain, x, z, radius)) continue;
+    if (!isFree(x, z, radius, 18) || !footprintIsUsable(terrain, x, z, radius, template.maxSlope)) continue;
     add(template.kind, x, z, yaw, shape, height);
     made++;
   }
