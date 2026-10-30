@@ -66,7 +66,7 @@ export class AimSolver {
       }
     }
     if (this.aimTarget) return this.aimTarget.getCentre(this.aimPoint);
-    return this.aimPoint.set(x, world.heightAt(x, z) + 1.4, z);
+    return this.aimPoint.set(x, world.surfaceHeightAt(x, z) + 1.4, z);
   }
 
   /** Gun direction that lands a shell on the current aim point. */

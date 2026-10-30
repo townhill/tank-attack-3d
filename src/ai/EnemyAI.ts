@@ -11,9 +11,13 @@ import { segmentVsTank } from '../combat/WeaponSystem';
 import type { Tank } from '../entities/Tank';
 import { clamp, headingOf, TAU } from '../utils/math';
 import type { Random } from '../utils/random';
+import type { PlanarVector } from '../world/distanceField';
 import type { World } from '../world/World';
+import type { NavPlanner } from './NavPlanner';
 import type { SteeringOutput } from './Navigation';
 import { faceTowards, reverseAwayFrom, steerTowards } from './Navigation';
+import type { Waypoint } from './PathFollower';
+import { createWaypoint, PathFollower } from './PathFollower';
 import type { AIState } from './StateMachine';
 import { decideNextState, isCombatState } from './StateMachine';
 
@@ -29,6 +33,8 @@ export interface AIContext {
   /** When true the controller refreshes perception and re-evaluates its state. */
   readonly think: boolean;
   readonly time: number;
+  /** Route planning shared by every enemy. */
+  readonly navigation: NavPlanner;
 }
 
 const sightPoint = new Vector3();
@@ -44,6 +50,13 @@ const FIRE_RECHECK = 0.4;
 const ZIGZAG_PERIOD = 0.9;
 /** Fraction of top speed used while patrolling. */
 const PATROL_SPEED = 0.5;
+/** Arrival distance when steering straight at a goal (metres). */
+const ARRIVAL_DISTANCE = 8;
+/** Chance a patrol goal across the river is kept; otherwise one on the tank's own bank is sought. */
+const OTHER_BANK_PATROL_CHANCE = 0.25;
+const PATROL_GOAL_ATTEMPTS = 4;
+/** How far behind a reversing tank to look for a bridge deck it must not back onto (metres). */
+const BACK_UP_CHECK = 10;
 
 export class EnemyController {
   state: AIState = 'patrol';
@@ -77,6 +90,10 @@ export class EnemyController {
   private readonly scanPhase: number;
   /** Angular offset that spreads enemies around the player. */
   private readonly approachOffset: number;
+  private readonly follower = new PathFollower();
+  private readonly waypoint: Waypoint = createWaypoint();
+  private readonly bankGoal: PlanarVector = { x: 0, z: 0 };
+  private patrolGoalChecked = false;
 
   constructor(
     readonly tank: Tank,
@@ -238,6 +255,56 @@ export class EnemyController {
     const radius = this.rng.range(40, AI.patrolRadius);
     this.goalX = clamp(this.homeX + Math.cos(angle) * radius, -limit, limit);
     this.goalZ = clamp(this.homeZ + Math.sin(angle) * radius, -limit, limit);
+    this.patrolGoalChecked = false;
+  }
+
+  /** Re-picks a patrol goal that lies in deep water or out of reach, preferring the tank's own bank. */
+  private keepPatrolReachable(ctx: AIContext): void {
+    if (this.patrolGoalChecked) return;
+    this.patrolGoalChecked = true;
+    const tank = this.tank;
+    const nav = ctx.navigation.nav;
+    const clearance = tank.spec.collisionRadius + 2;
+    for (let attempt = 0; attempt < PATROL_GOAL_ATTEMPTS; attempt++) {
+      const reachable = ctx.world.water.blockedDistance(this.goalX, this.goalZ) > clearance && nav.regionAt(this.goalX, this.goalZ) === nav.regionAt(tank.x, tank.z);
+      const ownBank = nav.sideAt(this.goalX, this.goalZ) === nav.sideAt(tank.x, tank.z);
+      if (reachable && (ownBank || this.rng.chance(OTHER_BANK_PATROL_CHANCE))) return;
+      this.pickPatrolWaypoint();
+      this.patrolGoalChecked = true;
+    }
+  }
+
+  /**
+   * Drives towards (gx, gz) at `speedFraction` of top speed, following a
+   * planned route whenever water stands in the way. Returns the distance
+   * left to the goal itself.
+   */
+  private travel(ctx: AIContext, gx: number, gz: number, speedFraction: number, arrival = ARRIVAL_DISTANCE): number {
+    const tank = this.tank;
+    const wp = this.waypoint;
+    if (!this.follower.steer(tank, gx, gz, ctx.navigation, ctx.think, ctx.time, wp)) {
+      return steerTowards(tank, gx, gz, speedFraction, ctx.world, ctx.tanks, steering, arrival);
+    }
+    if (wp.hold) {
+      steering.throttle = 0;
+      steering.turn = 0;
+    } else {
+      steerTowards(tank, wp.x, wp.z, speedFraction, ctx.world, ctx.tanks, steering, wp.arrival);
+    }
+    return Math.hypot(gx - tank.x, gz - tank.z);
+  }
+
+  /** A short-range goal kept on the tank's own bank: across a river it stops at the near shore instead. */
+  private onOwnBank(ctx: AIContext, gx: number, gz: number): PlanarVector {
+    const out = this.bankGoal;
+    out.x = gx;
+    out.z = gz;
+    const tank = this.tank;
+    if (tank.bridgeId >= 0) return out;
+    const nav = ctx.navigation.nav;
+    const side = nav.sideAt(tank.x, tank.z);
+    if (side >= 0 && nav.sideAt(gx, gz) !== side) nav.projectToSide(gx, gz, tank.x, tank.z, side, out);
+    return out;
   }
 
   private updateFlankGoal(player: Tank): void {
@@ -249,8 +316,6 @@ export class EnemyController {
   private drive(ctx: AIContext): void {
     const tank = this.tank;
     const player = ctx.player;
-    const world = ctx.world;
-    const tanks = ctx.tanks;
     const preferred = AI.preferredRange[this.kind];
 
     switch (this.state) {
@@ -260,28 +325,31 @@ export class EnemyController {
         steering.turn = 0;
         break;
       case 'patrol': {
-        const d = steerTowards(tank, this.goalX, this.goalZ, PATROL_SPEED, world, tanks, steering);
+        if (ctx.think) this.keepPatrolReachable(ctx);
+        const d = this.travel(ctx, this.goalX, this.goalZ, PATROL_SPEED);
         if (d < AI.patrolArrivalDistance) this.pickPatrolWaypoint();
         break;
       }
       case 'investigate':
-        steerTowards(tank, this.goalX, this.goalZ, 0.8, world, tanks, steering);
+        this.travel(ctx, this.goalX, this.goalZ, 0.8);
         break;
       case 'pursue': {
         // Approach from an individual angle so the pack spreads out.
         const bearing = headingOf(tank.x - this.lastKnownX, tank.z - this.lastKnownZ) + this.approachOffset;
         this.goalX = this.lastKnownX + Math.sin(bearing) * preferred * 0.9;
         this.goalZ = this.lastKnownZ - Math.cos(bearing) * preferred * 0.9;
-        steerTowards(tank, this.goalX, this.goalZ, 1, world, tanks, steering);
+        this.travel(ctx, this.goalX, this.goalZ, 1);
         break;
       }
       case 'attack':
         this.driveAttack(ctx, preferred);
         break;
-      case 'flank':
+      case 'flank': {
         if (ctx.think) this.updateFlankGoal(player);
-        steerTowards(tank, this.goalX, this.goalZ, 1, world, tanks, steering);
+        const goal = this.onOwnBank(ctx, this.goalX, this.goalZ);
+        this.travel(ctx, goal.x, goal.z, 1);
         break;
+      }
       case 'evade': {
         this.zigzagTimer -= ctx.dt;
         if (this.zigzagTimer <= 0) {
@@ -289,12 +357,14 @@ export class EnemyController {
           this.zigzagTimer = ZIGZAG_PERIOD;
         }
         const away = headingOf(tank.x - player.x, tank.z - player.z) + this.evadeSign * 1.3;
-        steerTowards(tank, tank.x + Math.sin(away) * 40, tank.z - Math.cos(away) * 40, 1, world, tanks, steering);
+        const goal = this.onOwnBank(ctx, tank.x + Math.sin(away) * 40, tank.z - Math.cos(away) * 40);
+        this.travel(ctx, goal.x, goal.z, 1);
         break;
       }
       case 'retreat': {
         const away = headingOf(tank.x - player.x, tank.z - player.z);
-        steerTowards(tank, tank.x + Math.sin(away) * 60, tank.z - Math.cos(away) * 60, 1, world, tanks, steering);
+        const goal = this.onOwnBank(ctx, tank.x + Math.sin(away) * 60, tank.z - Math.cos(away) * 60);
+        this.travel(ctx, goal.x, goal.z, 1);
         break;
       }
     }
@@ -306,20 +376,29 @@ export class EnemyController {
     const player = ctx.player;
     const dist = Math.hypot(player.x - tank.x, player.z - tank.z);
     if (dist < preferred * 0.45) {
-      reverseAwayFrom(tank, player.x, player.z, steering);
+      // Never back onto a bridge, which would bypass its right of way; face the threat instead.
+      const back = BACK_UP_CHECK;
+      if (tank.bridgeId < 0 && ctx.world.trackBridge(-1, tank.x - Math.sin(tank.heading) * back, tank.z + Math.cos(tank.heading) * back) >= 0) {
+        faceTowards(tank, player.x, player.z, steering);
+      } else {
+        reverseAwayFrom(tank, player.x, player.z, steering);
+      }
       return;
     }
     if (this.kind === 'heavy') {
       // Heavies grind forward and keep their thick frontal armour towards the threat.
-      if (dist > preferred * 1.1) steerTowards(tank, player.x, player.z, 0.65, ctx.world, ctx.tanks, steering);
-      else faceTowards(tank, player.x, player.z, steering);
+      if (dist > preferred * 1.1) {
+        const goal = this.onOwnBank(ctx, player.x, player.z);
+        this.travel(ctx, goal.x, goal.z, 0.65);
+      } else {
+        faceTowards(tank, player.x, player.z, steering);
+      }
       return;
     }
     const orbitSpeed = this.kind === 'scout' ? 0.9 : 0.5;
     const bearing = headingOf(tank.x - player.x, tank.z - player.z) + this.orbitDirection * 0.35;
-    const gx = player.x + Math.sin(bearing) * preferred;
-    const gz = player.z - Math.cos(bearing) * preferred;
-    steerTowards(tank, gx, gz, orbitSpeed, ctx.world, ctx.tanks, steering, 4);
+    const goal = this.onOwnBank(ctx, player.x + Math.sin(bearing) * preferred, player.z - Math.cos(bearing) * preferred);
+    this.travel(ctx, goal.x, goal.z, orbitSpeed, 4);
   }
 
   /** Detects a stalled tank and backs it out with a turn. */
@@ -339,6 +418,7 @@ export class EnemyController {
         this.stuckTimer = 0;
         this.unstickTimer = AI.unstickTime;
         this.unstickTurn = this.rng.chance(0.5) ? 1 : -1;
+        this.follower.invalidate();
       }
     } else {
       this.stuckTimer = 0;

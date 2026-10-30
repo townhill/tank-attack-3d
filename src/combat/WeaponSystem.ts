@@ -65,7 +65,7 @@ export function segmentVsTank(
   return segmentVsAabb(localA.x, localA.y - h.y, localA.z, localB.x, localB.y - h.y, localB.z, h.x, h.y, h.z);
 }
 
-export type HitSurface = 'tank' | 'obstacle' | 'terrain' | 'expired';
+export type HitSurface = 'tank' | 'obstacle' | 'terrain' | 'water' | 'bridge' | 'expired';
 
 export interface ProjectileHit {
   surface: HitSurface;
@@ -118,11 +118,11 @@ export function stepProjectile(
   world.raycastStatic(p.x, p.y, p.z, nx, ny, nz, staticHit);
   let surface: HitSurface = 'tank';
   let obstacle: Obstacle | null = null;
-  if (staticHit.t < bestT) {
+  if (staticHit.surface !== 'none' && staticHit.t < bestT) {
     bestT = staticHit.t;
     bestTank = null;
     obstacle = staticHit.obstacle;
-    surface = obstacle ? 'obstacle' : 'terrain';
+    surface = staticHit.surface;
   }
 
   if (bestT !== NO_HIT) {

@@ -1,97 +1,95 @@
-# Graph Report - tank-attack-3d  (2026-10-29)
+# Graph Report - tank-attack-3d  (2026-10-30)
 
 ## Corpus Check
-- 87 files · ~89,708 words
+- 115 files · ~187,988 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: .css 2, (none) 1)
 
 ## Summary
-- 1288 nodes · 3777 edges · 65 communities (50 shown, 15 thin omitted)
-- Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 422 edges (avg confidence: 0.85)
+- 1565 nodes · 4888 edges · 62 communities (53 shown, 9 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 511 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `119ec910`
+- Built from commit: `2caddf00`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- collision.test.ts
-- math.ts
+- Collision.ts
+- Random
 - Synth Sound Effects
 - Procedural Tank Geometry
 - Audio Test Fakes
-- Audio Math & Engine Loops
+- audioMath.ts
 - Package & Lint Config
 - Tactical Map View
 - Tactical Unit Symbols
-- README Gameplay Concepts
-- Camera State & Manager
-- Game Controller Lifecycle
+- VECTOR TANKS
+- Design principles
+- Mixer
 - combat.test.ts
 - Audio Manager & Mixer
-- Scoring.ts
-- User Settings Store
-- Menu Screens
+- Game.ts
+- WorldView.ts
+- Menu
 - WorldView
 - Enemy AI Test Harness
 - Radar Display
-- Tank Entity & Aim Solver
-- Spatial Audio Panning
+- Tank.ts
+- .frame
 - Visual Effects Bursts
-- Random
+- WorldGenerator.ts
 - TypeScript Config
-- Simulation Step & Waves
-- Renderer Setup
-- HUD
-- Enemy Steering & Navigation
-- Wave Composition
+- Simulation
+- .applySettings
+- InputManager
+- EnemyAI.ts
+- waves.test.ts
 - MapProjection
-- Input & Gamepad
+- tacticalWater.test.ts
 - Enemy Controller
-- Particle System
+- BridgePlacer.ts
 - Audio Loop Graph
-- Game Event Types
-- Edge Material Library
-- Simulation.ts
+- WaterMap
+- Effects.ts
+- main.ts
 - Graphify Project Rules
 - Tank View & Tracks
-- Graphics Mode Specs
-- .constructor
+- Ballistics.ts
+- StateMachine.ts
 - Terrain
-- Radar.ts
-- World
-- Graphics Mode Application
-- App Bootstrap & WebGL Check
-- Graphics Modes & Hidden-Line
-- AI State Transitions
-- Renderer.ts
-- Fake Audio Params
-- HudPresenter.ts
 - settings.ts
+- Tank
+- Graphics Mode Application
+- Game
+- ContactTracker
+- Bridge.ts
+- MaterialLibrary
+- Fake Audio Params
+- HUD
 - Favicon Vector Icon
 - Root CLAUDE.md
 - Local .claude CLAUDE.md
-- Tank.ts
-- generateHeights
-- Obstacle
-- formatDistance
-- PerfOverlay
-- .fill
-- vitest
-- tank.test.ts
+- WaterGenerator.ts
+- World.ts
+- MapProjection.ts
+- .constructor
+- aiWater.test.ts
+- tacticalData.ts
+- distanceField.ts
 
 ## God Nodes (most connected - your core abstractions)
-1. `Tank` - 71 edges
-2. `Simulation` - 65 edges
-3. `Game` - 53 edges
-4. `TacticalMap` - 51 edges
-5. `World` - 51 edges
-6. `Random` - 49 edges
-7. `clamp()` - 44 edges
-8. `Terrain` - 34 edges
-9. `GraphicsModeSpec` - 32 edges
-10. `Radar` - 31 edges
+1. `Tank` - 91 edges
+2. `World` - 79 edges
+3. `Simulation` - 76 edges
+4. `Random` - 57 edges
+5. `Game` - 54 edges
+6. `Terrain` - 54 edges
+7. `clamp()` - 53 edges
+8. `TacticalMap` - 51 edges
+9. `Obstacle` - 35 edges
+10. `GraphicsModeSpec` - 34 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `AudioManager` --implements--> `Synthesised Web Audio`  [INFERRED]
@@ -115,227 +113,239 @@
 - **Graph-First Codebase Navigation Hierarchy** — claude_query_first_rule, claude_graphify_query, claude_wiki_index, claude_graph_report [INFERRED 0.85]
 - **Deterministic headless simulation core** — src_game_simulation_simulation, src_game_gameloop_fixedstepaccumulator, src_entities_tank_tank, readme_fixed_timestep, readme_simulation_presentation_separation, readme_gameevent_stream [INFERRED 0.85]
 
-## Communities (65 total, 15 thin omitted)
+## Communities (62 total, 9 thin omitted)
 
-### Community 0 - "collision.test.ts"
-Cohesion: 0.19
-Nodes (21): circleVsObstacle(), clipSlab(), createPushResult(), exitScratch, PushResult, range, segmentVsAabb(), segmentVsCylinder() (+13 more)
+### Community 0 - "Collision.ts"
+Cohesion: 0.16
+Nodes (18): belowTerrain(), belowWater(), clipSlab(), exitScratch, marchBelow(), marchToSurface(), range, segmentVsAabb() (+10 more)
 
-### Community 1 - "math.ts"
-Cohesion: 0.24
-Nodes (17): angleDiff(), damp(), dampAngle(), distance2D(), distanceSq2D(), forwardX(), forwardZ(), inverseLerp() (+9 more)
+### Community 1 - "Random"
+Cohesion: 0.21
+Nodes (4): AIContext, Sky, Random, Harness
 
 ### Community 2 - "Synth Sound Effects"
-Cohesion: 0.11
-Nodes (36): fireTimbre, steppedGlide(), playDestroyed(), playEventSound(), playFire(), playImpact(), playPlayerDamaged(), burst() (+28 more)
+Cohesion: 0.25
+Nodes (29): fireTimbre, steppedGlide(), burst(), cannon(), CLANG_PARTIALS, crushedBurst(), detune(), explosion() (+21 more)
 
 ### Community 3 - "Procedural Tank Geometry"
 Cohesion: 0.09
-Nodes (40): box(), centroid2(), edgePositions(), extrudeProfileX(), flipWinding(), loft(), mergeParts(), polygon() (+32 more)
+Nodes (41): box(), centroid2(), edgePositions(), extrudeProfileX(), flipWinding(), loft(), mergeParts(), polygon() (+33 more)
 
 ### Community 4 - "Audio Test Fakes"
 Cohesion: 0.07
 Nodes (18): ALL_EVENTS, enemy(), FakeAudioContext, FakeBiquad, FakeBuffer, FakeBufferSource, FakeCompressor, FakeGain (+10 more)
 
-### Community 5 - "Audio Math & Engine Loops"
-Cohesion: 0.10
-Nodes (28): chooseVoice(), CRITICAL_HEALTH, CRITICAL_HEALTH_INTERVAL, ENEMY_ENGINE_BASE, ENEMY_ENGINE_RANGE, ENEMY_ENGINE_VOICES, enemyEngineParams, engineParams (+20 more)
+### Community 5 - "audioMath.ts"
+Cohesion: 0.07
+Nodes (44): chooseVoice(), CRITICAL_HEALTH, CRITICAL_HEALTH_INTERVAL, crushCurve(), ENEMY_ENGINE_BASE, ENEMY_ENGINE_RANGE, ENEMY_ENGINE_VOICES, enemyEngineParams (+36 more)
 
 ### Community 6 - "Package & Lint Config"
 Cohesion: 0.06
 Nodes (35): dependencies, three, description, devDependencies, eslint, @eslint/js, globals, @types/three (+27 more)
 
 ### Community 7 - "Tactical Map View"
-Cohesion: 0.09
-Nodes (3): context2d(), element(), TacticalMap
+Cohesion: 0.10
+Nodes (3): gridColumnLetter(), context2d(), TacticalMap
 
 ### Community 8 - "Tactical Unit Symbols"
 Cohesion: 0.09
-Nodes (32): fitScale(), niceScaleLength(), AIM_DASH, BOUNDARY_DASH, MapIntel, NO_DASH, RANGE_DASH, ROW_LABELS (+24 more)
+Nodes (32): AIM_DASH, BOUNDARY_DASH, element(), MapIntel, NO_DASH, RANGE_DASH, ROW_LABELS, STOPPED_EVENTS (+24 more)
 
-### Community 9 - "README Gameplay Concepts"
+### Community 9 - "VECTOR TANKS"
 Cohesion: 0.07
-Nodes (29): 3D Tanks (1989 Acorn Archimedes), Aiming, Architecture, Battlezone (1980 arcade), Gunner / chase / tactical cameras, Compact radar, Controls, Difficulty (+21 more)
+Nodes (28): 3D Tanks (1989 Acorn Archimedes), Aiming, Battlezone (1980 arcade), Gunner / chase / tactical cameras, Compact radar, Controls, Difficulty, Easy / Normal / Hard difficulty levels (+20 more)
 
-### Community 11 - "Game Controller Lifecycle"
+### Community 10 - "Design principles"
+Cohesion: 0.20
+Nodes (4): Architecture, Design principles, Per-tick GameEvent list, Three.js
+
+### Community 11 - "Mixer"
 Cohesion: 0.19
-Nodes (4): window.__vt development debug handle, Development summary, Game, mapSizeLabel()
+Nodes (8): distanceGain(), playDestroyed(), playEventSound(), playFire(), playImpact(), playPlayerDamaged(), createPanner(), Voice
 
 ### Community 12 - "combat.test.ts"
 Cohesion: 0.10
-Nodes (22): ballisticDirection(), leadTarget(), shellPositionAt(), solveElevation(), timeOfFlight(), Vec3Like, fireWeapon(), invQuat (+14 more)
+Nodes (22): computeDamage(), Damageable, DamageInput, hitZone, zoneMultiplier(), fireWeapon(), HitSurface, DAMAGE (+14 more)
 
 ### Community 13 - "Audio Manager & Mixer"
-Cohesion: 0.18
-Nodes (4): AudioManager, PlayerLoops, getAudioContextCtor(), unlockedManager()
+Cohesion: 0.11
+Nodes (5): AudioManager, Mixer, getAudioContextCtor(), VoicePool, unlockedManager()
 
-### Community 14 - "Scoring.ts"
-Cohesion: 0.24
-Nodes (9): DIFFICULTY, TANK_SPECS, accuracy(), createStats(), formatTime(), KeyValueStore, killScore(), waveClearBonus() (+1 more)
+### Community 14 - "Game.ts"
+Cohesion: 0.09
+Nodes (20): MAP_SIZES, DIFFICULTIES, GRAPHICS_MODES, MAP_SIZE_IDS, MapIntel, pickBoolean(), pickEnum(), pickNumber() (+12 more)
 
-### Community 15 - "User Settings Store"
+### Community 15 - "WorldView.ts"
+Cohesion: 0.11
+Nodes (20): Classic Vector graphics mode, Graphics modes, How hidden-line removal works, Hybrid 3D graphics mode, Modern Neon Vector graphics mode (default), three, TankKind, GraphicsModeId (+12 more)
+
+### Community 16 - "Menu"
 Cohesion: 0.19
-Nodes (11): browserStorage(), DEFAULT_SETTINGS, DIFFICULTIES, MapIntel, pickBoolean(), pickEnum(), pickNumber(), QUALITY_LEVELS (+3 more)
-
-### Community 16 - "Menu Screens"
-Cohesion: 0.20
 Nodes (4): UserSettings, make(), Menu, MenuCallbacks
 
 ### Community 17 - "WorldView"
-Cohesion: 0.17
-Nodes (5): ObstacleView, ProjectileView, TerrainView, createEnvironmentScene(), WorldView
+Cohesion: 0.18
+Nodes (7): BridgeView, ObstacleView, TerrainView, WaterView, createEnvironmentScene(), WorldView, World
 
 ### Community 18 - "Enemy AI Test Harness"
 Cohesion: 0.18
 Nodes (16): BASE_INPUT, engage(), engagedAttacker(), FixedRandom, makeFlatWorld(), makeHarness(), makeObstacle(), placeTank() (+8 more)
 
 ### Community 19 - "Radar Display"
+Cohesion: 0.18
+Nodes (3): viewAngle(), Radar, rgba()
+
+### Community 20 - "Tank.ts"
+Cohesion: 0.07
+Nodes (43): WORLD, NO_CONTROLS, scratchBack, scratchForward, scratchLocal, scratchMatrix, scratchQuat, scratchRight (+35 more)
+
+### Community 22 - "Visual Effects Bursts"
+Cohesion: 0.21
+Nodes (3): Effects, generateObstacles(), pickStructure()
+
+### Community 23 - "WorldGenerator.ts"
 Cohesion: 0.15
-Nodes (4): Radar, GraphicsModeId, rgba(), tacticalTheme
-
-### Community 20 - "Tank Entity & Aim Solver"
-Cohesion: 0.20
-Nodes (5): Tank, AimSolver, makeTank(), simWithEnemy(), makeTank()
-
-### Community 21 - "Spatial Audio Panning"
-Cohesion: 0.12
-Nodes (19): crushCurve(), distanceGain(), listenerUp(), MAX_DISTANCE, MAX_ONE_SHOT_VOICES, relativePan(), Vec3Like, VoiceSlot (+11 more)
-
-### Community 23 - "Random"
-Cohesion: 0.14
-Nodes (19): WORLD, hashSeed(), boundRadiusOf(), ObstacleKind, ObstacleShape, STOREY_HEIGHT, DEFAULT_WORLD_OPTIONS, footprintBase() (+11 more)
+Nodes (19): placeBridges(), boundRadiusOf(), BoxShape, buildingStoreys(), CircleShape, ObstacleKind, ObstacleShape, STOREY_HEIGHT (+11 more)
 
 ### Community 24 - "TypeScript Config"
 Cohesion: 0.09
 Nodes (21): compilerOptions, exactOptionalPropertyTypes, isolatedModules, lib, module, moduleResolution, noEmit, noFallthroughCasesInSwitch (+13 more)
 
-### Community 25 - "Simulation Step & Waves"
-Cohesion: 0.10
-Nodes (8): Design principles, Per-tick GameEvent list, Three.js, GameStats, createPlayerCommand(), Simulation, ContactTracker, run()
+### Community 25 - "Simulation"
+Cohesion: 0.13
+Nodes (5): applyDamage(), stepProjectile(), Simulation, simWithEnemy(), riverSim()
 
-### Community 28 - "Enemy Steering & Navigation"
+### Community 26 - ".applySettings"
+Cohesion: 0.07
+Nodes (6): Performance overlay, Quality, Quality presets with auto-reduce, Renderer, PerfOverlay, PerfStats
+
+### Community 27 - "InputManager"
+Cohesion: 0.09
+Nodes (10): DEFAULT_SETTINGS, PlayerController, PlayerCommand, applyDeadzone(), GAME_KEYS, GamepadState, InputManager, isEditableTarget() (+2 more)
+
+### Community 28 - "EnemyAI.ts"
 Cohesion: 0.16
-Nodes (15): Gaussian aim error, aimDir, leadPoint, muzzleDir, muzzlePos, playerCentre, sightPoint, steering (+7 more)
+Nodes (16): Gaussian aim error, aimDir, leadPoint, muzzleDir, muzzlePos, playerCentre, sightPoint, steering (+8 more)
 
-### Community 29 - "Wave Composition"
-Cohesion: 0.12
-Nodes (17): AIContext, TransitionInput, DifficultySpec, EnemyKind, WAVES, EnemyEntry, aimErrorScale(), maxConcurrentEnemies() (+9 more)
-
-### Community 30 - "MapProjection"
-Cohesion: 0.24
-Nodes (3): MapProjection, Contact, projection()
-
-### Community 31 - "Input & Gamepad"
-Cohesion: 0.10
-Nodes (8): PlayerController, PlayerCommand, applyDeadzone(), GAME_KEYS, GamepadState, InputManager, isEditableTarget(), AimState
-
-### Community 33 - "Particle System"
-Cohesion: 0.12
-Nodes (8): GameEvent, Emitter, FlashSlot, LightSlot, makeFlashTexture(), RingSlot, ParticleSpawn, ParticleSystem
-
-### Community 35 - "Game Event Types"
-Cohesion: 0.22
-Nodes (12): hitZone, HitSurface, TankKind, EnemySpawnedEvent, FireEvent, GameOverEvent, ImpactEvent, PlayerDamagedEvent (+4 more)
-
-### Community 36 - "Edge Material Library"
-Cohesion: 0.12
-Nodes (10): createEdge(), createSolid(), EDGE_ROLES, EdgeRole, MaterialLibrary, MaterialOptions, SOLID_ROLES, SolidRole (+2 more)
-
-### Community 37 - "Simulation.ts"
+### Community 29 - "waves.test.ts"
 Cohesion: 0.14
-Nodes (17): applyDamage(), computeDamage(), Damageable, DamageInput, zoneMultiplier(), createProjectileHit(), BASE_GEOMETRY, DAMAGE (+9 more)
+Nodes (14): AudioEnemy, DifficultySpec, EnemyKind, EnemySpawnedEvent, EnemyEntry, aimErrorScale(), maxConcurrentEnemies(), shareFrom() (+6 more)
+
+### Community 31 - "tacticalWater.test.ts"
+Cohesion: 0.18
+Nodes (9): drawBridgeSymbol(), GraphicsModeId, tacticalTheme, drawMapBridges(), ShorelineIndex, compareWithBruteForce(), Extent, Recording (+1 more)
+
+### Community 32 - "Enemy Controller"
+Cohesion: 0.16
+Nodes (4): EnemyController, AIState, Mission, randomMask()
+
+### Community 33 - "BridgePlacer.ts"
+Cohesion: 0.10
+Nodes (31): BRIDGE, WATER, BridgeLocal, BANK_LINES, bankDistance(), buildBridge(), Crossing, planCrossing() (+23 more)
+
+### Community 35 - "WaterMap"
+Cohesion: 0.18
+Nodes (4): Bridge, DistanceField, WaterMap, gridWith()
+
+### Community 36 - "Effects.ts"
+Cohesion: 0.12
+Nodes (7): Emitter, FlashSlot, LightSlot, makeFlashTexture(), RingSlot, ParticleSpawn, ParticleSystem
+
+### Community 37 - "main.ts"
+Cohesion: 0.28
+Nodes (5): #app main mount element, body data-mode attribute, WebGL 2 requirement, root, webglAvailable()
 
 ### Community 38 - "Graphify Project Rules"
 Cohesion: 0.21
 Nodes (12): /graphify Trigger Command, graphify Skill, Community Structure, God Nodes, graphify-out/graph.json, GRAPH_REPORT.md, graphify explain, graphify-out Knowledge Graph (+4 more)
 
-### Community 39 - "Tank View & Tracks"
-Cohesion: 0.20
-Nodes (6): PartGeometry, TRACK_SEGMENT_COUNT, writeTrackSegments(), PartObjects, TankView, WHITE
+### Community 40 - "Ballistics.ts"
+Cohesion: 0.31
+Nodes (7): isCombatState(), ballisticDirection(), leadTarget(), shellPositionAt(), solveElevation(), timeOfFlight(), Vec3Like
 
-### Community 40 - "Graphics Mode Specs"
-Cohesion: 0.15
-Nodes (12): GRAPHICS_MODES, MAP_SIZE_IDS, AppState, randomSeed(), seedFromUrl(), Control, difficultyBlurb(), GameOverSummary (+4 more)
+### Community 41 - "StateMachine.ts"
+Cohesion: 0.43
+Nodes (6): decideNextState(), engageState(), shouldEvade(), shouldRetreat(), TransitionInput, decide()
 
 ### Community 42 - "Terrain"
-Cohesion: 0.20
-Nodes (7): Terrain, footprintIsUsable(), makeRamp(), makeWorld(), drive(), rampTerrain(), makeRamp()
+Cohesion: 0.21
+Nodes (12): buildChunk(), crossEdge(), crossings, crossTriangle(), shorelineSegments(), Terrain, generateHeights(), makeRamp() (+4 more)
 
-### Community 43 - "Radar.ts"
-Cohesion: 0.19
-Nodes (15): bearingOf(), clampToRadius(), NICE_STEPS, Point2, rotateToView(), sweepLag(), viewAngle(), BOUNDARY_DASH (+7 more)
+### Community 43 - "settings.ts"
+Cohesion: 0.16
+Nodes (23): AI, BASE_GEOMETRY, DIFFICULTY, MapSize, MapSizeSpec, PROJECTILE, SIM_HZ, TANK_SPECS (+15 more)
 
-### Community 44 - "World"
-Cohesion: 0.13
-Nodes (13): three, SUN_OFFSET, CONTOUR_INTERVAL, HeightSamples, LIGHT_LENGTH, sampleHeights(), shadeRelief(), VISUAL_RANGE (+5 more)
+### Community 44 - "Tank"
+Cohesion: 0.05
+Nodes (29): Crossing, deckX(), deckZ(), NavPlanner, preference(), travelDirection(), NEIGHBOURS, PathFinder (+21 more)
 
-### Community 46 - "App Bootstrap & WebGL Check"
-Cohesion: 0.32
-Nodes (4): #app main mount element, WebGL 2 requirement, root, webglAvailable()
+### Community 45 - "Graphics Mode Application"
+Cohesion: 0.24
+Nodes (5): QualityLevel, GraphicsModeSpec, CRT_SHADER, QualityPreset, RenderConfig
 
-### Community 47 - "Graphics Modes & Hidden-Line"
-Cohesion: 0.26
-Nodes (9): body data-mode attribute, Classic Vector graphics mode, Graphics modes, How hidden-line removal works, Hybrid 3D graphics mode, Modern Neon Vector graphics mode (default), GraphicsModeId, ColourPair (+1 more)
-
-### Community 48 - "AI State Transitions"
-Cohesion: 0.43
-Nodes (6): decideNextState(), engageState(), isCombatState(), shouldEvade(), shouldRetreat(), decide()
-
-### Community 49 - "Renderer.ts"
-Cohesion: 0.33
-Nodes (5): QualityLevel, CRT_SHADER, QUALITY_PRESETS, QualityPreset, RenderConfig
-
-### Community 51 - "HudPresenter.ts"
-Cohesion: 0.23
-Nodes (9): CAMERA_LABELS, el(), HELP_HTML, HudFrame, HudTarget, Indicator, MAX_HUD_TARGETS, stat() (+1 more)
-
-### Community 56 - "Tank.ts"
+### Community 46 - "Game"
 Cohesion: 0.18
-Nodes (10): NO_CONTROLS, scratchBack, scratchForward, scratchLocal, scratchMatrix, scratchQuat, scratchRight, scratchUp (+2 more)
+Nodes (3): window.__vt development debug handle, Development summary, Game
 
-### Community 57 - "generateHeights"
-Cohesion: 0.42
-Nodes (4): mulberry32 seeded RNG, Seeded procedural battlefield, SimplexNoise2D, generateHeights()
+### Community 48 - "Bridge.ts"
+Cohesion: 0.14
+Nodes (24): vitest, bridgePieces(), createBridgeLocal(), DECK_THICKNESS, deckHeightAt(), exitScratch, isOnDeck(), kerbPush() (+16 more)
 
-### Community 59 - "formatDistance"
-Cohesion: 0.25
-Nodes (5): formatDistance(), gridColumnLetter(), gridIndex(), gridLabel(), mapSizeBlurb()
+### Community 49 - "MaterialLibrary"
+Cohesion: 0.18
+Nodes (3): createEdge(), createSolid(), MaterialLibrary
 
-### Community 60 - "PerfOverlay"
-Cohesion: 0.25
-Nodes (4): Performance overlay, Quality, Quality presets with auto-reduce, PerfOverlay
+### Community 51 - "HUD"
+Cohesion: 0.12
+Nodes (6): GameEvent, css(), HudPresenter, CameraMode, HUD, pad3()
 
-### Community 61 - ".fill"
-Cohesion: 0.43
-Nodes (3): css(), HudPresenter, CameraMode
+### Community 57 - "WaterGenerator.ts"
+Cohesion: 0.08
+Nodes (37): mulberry32 seeded RNG, Seeded procedural battlefield, lerp(), smoothstep(), SimplexNoise2D, gradeApproaches(), shoreCap(), carveLake() (+29 more)
 
-### Community 62 - "vitest"
-Cohesion: 0.43
-Nodes (4): vitest, AIM_LIMITS, CAMERA_LIMITS, CAMERA_MODES
+### Community 58 - "World.ts"
+Cohesion: 0.10
+Nodes (22): createProjectileHit(), invQuat, localA, localB, muzzleDir, muzzlePos, ProjectileHit, staticHit (+14 more)
 
-### Community 64 - "tank.test.ts"
-Cohesion: 0.50
-Nodes (4): DriveOptions, expectedMuzzle(), flatTerrain(), toWorld()
+### Community 59 - "MapProjection.ts"
+Cohesion: 0.18
+Nodes (15): bearingOf(), clampToRadius(), NICE_STEPS, Point2, rotateToView(), sweepLag(), BOUNDARY_DASH, NO_DASH (+7 more)
+
+### Community 60 - ".constructor"
+Cohesion: 0.19
+Nodes (6): browserStorage(), randomSeed(), seedFromUrl(), BestScoreStore, mapSizeLabel(), UiSoundKind
+
+### Community 62 - "aiWater.test.ts"
+Cohesion: 0.17
+Nodes (8): SIM_DT, FixedStepAccumulator, createPlayerCommand(), BattleLog, riverBattle(), runMissions(), run(), drive()
+
+### Community 67 - "tacticalData.ts"
+Cohesion: 0.13
+Nodes (16): fitScale(), formatDistance(), gridIndex(), gridLabel(), niceScaleLength(), CONTOUR_INTERVAL, HeightSamples, LIGHT_LENGTH (+8 more)
+
+### Community 68 - "distanceField.ts"
+Cohesion: 0.47
+Nodes (3): FAR_DISTANCE, lowerEnvelope(), squaredDistances()
 
 ## Knowledge Gaps
 - **15 isolated node(s):** `@types/three`, `@vitest/coverage-v8`, `eslint`, `typescript`, `vite` (+10 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 274 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 313 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Simulation` connect `Simulation Step & Waves` to `Tactical Map View`, `Tactical Unit Symbols`, `Game Controller Lifecycle`, `Scoring.ts`, `Radar Display`, `Tank Entity & Aim Solver`, `Visual Effects Bursts`, `Random`, `HUD`, `Wave Composition`, `Particle System`, `Simulation.ts`, `Graphics Mode Specs`, `.constructor`, `Radar.ts`, `World`, `HudPresenter.ts`, `Obstacle`, `formatDistance`, `.fill`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Why does `World` connect `WorldView` to `Collision.ts`, `Random`, `Procedural Tank Geometry`, `Tactical Map View`, `Tactical Unit Symbols`, `combat.test.ts`, `WorldView.ts`, `Enemy AI Test Harness`, `Radar Display`, `Tank.ts`, `.frame`, `WorldGenerator.ts`, `Simulation`, `InputManager`, `EnemyAI.ts`, `waves.test.ts`, `tacticalWater.test.ts`, `BridgePlacer.ts`, `WaterMap`, `Terrain`, `settings.ts`, `Tank`, `Bridge.ts`, `World.ts`, `MapProjection.ts`, `tacticalData.ts`?**
+  _High betweenness centrality (0.083) - this node is a cross-community bridge._
 - **What connects `@types/three`, `@vitest/coverage-v8`, `eslint` to the rest of the system?**
   _15 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Synth Sound Effects` be split into smaller, more focused modules?**
-  _Cohesion score 0.11259920634920635 - nodes in this community are weakly interconnected._
-- **Why does `TacticalMap` connect `Tactical Map View` to `Graphics Mode Specs`, `.constructor`, `Tactical Unit Symbols`, `Game Controller Lifecycle`, `README Gameplay Concepts`, `World`, `Radar Display`, `Simulation Step & Waves`, `formatDistance`, `MapProjection`, `Input & Gamepad`?**
-  _High betweenness centrality (0.056) - this node is a cross-community bridge._
 - **Should `Procedural Tank Geometry` be split into smaller, more focused modules?**
-  _Cohesion score 0.09427609427609428 - nodes in this community are weakly interconnected._
-- **Why does `GameEvent` connect `Particle System` to `Synth Sound Effects`, `Game Event Types`, `Audio Test Fakes`, `Audio Math & Engine Loops`, `Simulation.ts`, `Graphics Mode Specs`, `World`, `HudPresenter.ts`, `Visual Effects Bursts`, `Simulation Step & Waves`, `HUD`?**
-  _High betweenness centrality (0.049) - this node is a cross-community bridge._
+  _Cohesion score 0.09155844155844156 - nodes in this community are weakly interconnected._
+- **Why does `TacticalMap` connect `Tactical Map View` to `tacticalData.ts`, `Tactical Unit Symbols`, `VECTOR TANKS`, `settings.ts`, `Game`, `ContactTracker`, `WorldView`, `Simulation`, `InputManager`, `.constructor`, `MapProjection`, `tacticalWater.test.ts`?**
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
 - **Should `Audio Test Fakes` be split into smaller, more focused modules?**
   _Cohesion score 0.0743321718931475 - nodes in this community are weakly interconnected._
+- **Why does `Tank` connect `Tank` to `Random`, `audioMath.ts`, `Tactical Unit Symbols`, `Design principles`, `combat.test.ts`, `WorldView.ts`, `Enemy AI Test Harness`, `Radar Display`, `Tank.ts`, `.frame`, `Simulation`, `InputManager`, `EnemyAI.ts`, `waves.test.ts`, `Enemy Controller`, `Tank View & Tracks`, `settings.ts`, `ContactTracker`, `Bridge.ts`, `MaterialLibrary`, `HUD`, `World.ts`, `MapProjection.ts`, `aiWater.test.ts`, `tacticalData.ts`?**
+  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+- **Should `audioMath.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.06605222734254992 - nodes in this community are weakly interconnected._

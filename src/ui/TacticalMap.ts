@@ -13,6 +13,7 @@ import { fitScale, formatDistance, gridColumnLetter, gridLabel, MapProjection, n
 import type { Contact } from './tacticalData';
 import { ContactTracker, shadeRelief } from './tacticalData';
 import type { GraphicsModeId, LegendItem, TacticalTheme } from './tacticalTheme';
+import { drawMapBridges } from './tacticalWater';
 import {
   drawArrow,
   drawLegendSymbol,
@@ -247,6 +248,7 @@ export class TacticalMap {
     ctx.fillRect(0, 0, p.width, p.height);
     this.drawRelief();
     this.drawGrid();
+    drawMapBridges(this.ctx, this.theme, this.world, this.projection, CULL_MARGIN);
     this.drawObstacles();
     this.drawBoundary();
     this.drawProjectiles(sim);
@@ -771,7 +773,7 @@ export class TacticalMap {
   private renderLegend(): void {
     const items: LegendItem[] = ['player', 'standard', 'heavy', 'scout'];
     if (this.intel === 'radar') items.push('ghost');
-    items.push('vector', 'wreck', 'shell', 'structure', 'building', 'rock', 'boundary');
+    items.push('vector', 'wreck', 'shell', 'structure', 'building', 'rock', 'water', 'bridge', 'boundary');
     const dpr = this.dpr;
     const height = LEGEND_PAD * 2 + items.length * LEGEND_ROW;
     this.legend.style.height = `${height}px`;

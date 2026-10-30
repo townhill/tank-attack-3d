@@ -7,10 +7,16 @@ import { MAP_SIZES, WORLD } from '../config/settings';
 import { lerp, smoothstep, TAU } from '../utils/math';
 import { SimplexNoise2D } from '../utils/noise';
 import { Random } from '../utils/random';
+import { createBridgeLocal, toBridgeLocal } from './Bridge';
+import { placeBridges } from './BridgePlacer';
+import { NavGrid } from './NavGrid';
 import type { Obstacle, ObstacleKind, ObstacleShape } from './Obstacle';
 import { boundRadiusOf, STOREY_HEIGHT, toWorldX, toWorldZ } from './Obstacle';
 import { Terrain } from './Terrain';
-import { World } from './World';
+import { createWaterMap } from './Water';
+import { carveWater, planLakes, planRivers } from './WaterGenerator';
+import type { WorldFeatures } from './World';
+import { dryFeatures, World } from './World';
 
 export interface WorldGenOptions {
   readonly terrainHalfSize: number;
@@ -19,12 +25,16 @@ export interface WorldGenOptions {
   readonly rockCount: number;
   readonly structureCount: number;
   readonly spawnClearRadius: number;
+  /** Rivers, lakes and ponds to generate; all zero for dry land. */
+  readonly rivers: number;
+  readonly lakes: number;
+  readonly ponds: number;
 }
 
 /**
  * Generation options for a map size: the playable square scales by side
- * length, the boundary mountain margin keeps its width and obstacle counts
- * scale with area so density stays the same.
+ * length, the boundary mountain margin keeps its width, rivers scale with the
+ * side and obstacles, lakes and ponds with the area so density stays the same.
  */
 export function worldOptionsFor(size: MapSize): WorldGenOptions {
   const scale = MAP_SIZES[size].scale;
@@ -37,6 +47,9 @@ export function worldOptionsFor(size: MapSize): WorldGenOptions {
     rockCount: WORLD.rockCount * area,
     structureCount: WORLD.structureCount * area,
     spawnClearRadius: WORLD.spawnClearRadius,
+    rivers: WORLD.riverCount * scale,
+    lakes: WORLD.lakeCount * area,
+    ponds: WORLD.pondCount * area,
   };
 }
 
@@ -44,6 +57,16 @@ export const DEFAULT_WORLD_OPTIONS: WorldGenOptions = worldOptionsFor('standard'
 
 /** Maximum gradient tolerated under an obstacle's footprint. */
 const MAX_OBSTACLE_SLOPE = 0.32;
+/** Obstacles keep this far from water tanks cannot enter, beyond their own radius (metres). */
+const OBSTACLE_WATER_CLEARANCE = 6;
+/** Obstacles keep this far from a bridge road and its ramps, beyond their own radius (metres). */
+const OBSTACLE_BRIDGE_CLEARANCE = 10;
+/** Attempts with rivers before trying lakes alone, then dry land. */
+const RIVER_LAYOUT_ATTEMPTS = 3;
+/** Share of the walkable ground that must be reachable from the player's spawn. */
+const MIN_REACHABLE_SHARE = 0.97;
+/** How far beyond the playable square the blocked-water field reaches (metres). */
+const WATER_FIELD_MARGIN = 40;
 /** Stricter limit for buildings, so a hillside never swallows the ground floor. */
 export const MAX_BUILDING_SLOPE = 0.18;
 
@@ -129,6 +152,8 @@ const STRUCTURES: readonly StructureTemplate[] = [
   { kind: 'building', weight: 4, maxSlope: MAX_BUILDING_SLOPE, make: (rng) => ({ shape: { type: 'box', halfX: rng.range(6, 10), halfZ: rng.range(5, 8) }, height: rng.int(2, 4) * STOREY_HEIGHT }) },
 ];
 
+const BUILDING_TEMPLATE = STRUCTURES.find((s) => s.kind === 'building')!;
+
 function pickStructure(rng: Random): StructureTemplate {
   const total = STRUCTURES.reduce((sum, s) => sum + s.weight, 0);
   let roll = rng.next() * total;
@@ -139,7 +164,24 @@ function pickStructure(rng: Random): StructureTemplate {
   return STRUCTURES[0]!;
 }
 
-function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions): Obstacle[] {
+/** True when an obstacle footprint of `radius` at (x, z) keeps clear of water, banks and bridge approaches. */
+function isClearOfWater(features: WorldFeatures, x: number, z: number, radius: number): boolean {
+  const water = features.water;
+  if (water.blockedDistance(x, z) < radius + OBSTACLE_WATER_CLEARANCE || water.depthAt(x, z) > 0) return false;
+  for (let a = 0; a < 6; a++) {
+    const angle = (a / 6) * TAU;
+    if (water.depthAt(x + Math.cos(angle) * radius, z + Math.sin(angle) * radius) > 0) return false;
+  }
+  const local = createBridgeLocal();
+  for (const b of features.bridges) {
+    toBridgeLocal(b, x, z, local);
+    const reach = radius + OBSTACLE_BRIDGE_CLEARANCE;
+    if (Math.abs(local.lateral) < b.halfWidth + reach && Math.abs(local.along) < b.halfLength + b.rampLength + reach) return false;
+  }
+  return true;
+}
+
+function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions, features: WorldFeatures): Obstacle[] {
   const rng = new Random(seed ^ 0x5bd1e995);
   const obstacles: Obstacle[] = [];
   const placed: Placement[] = [];
@@ -150,7 +192,7 @@ function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions
     for (const p of placed) {
       if (Math.hypot(p.x - x, p.z - z) < p.radius + radius + gap) return false;
     }
-    return true;
+    return isClearOfWater(features, x, z, radius);
   };
 
   const add = (kind: ObstacleKind, x: number, z: number, yaw: number, shape: ObstacleShape, height: number): void => {
@@ -170,9 +212,14 @@ function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions
     placed.push({ x, z, radius: boundRadius });
   };
 
-  // Structures first so they get the best (flattest) spots.
+  // Structures first so they get the best (flattest) spots. Water takes some
+  // of the flattest ground, so the last structure is kept for a building
+  // whenever none has been placed yet.
+  let hasBuilding = false;
   for (let attempt = 0, made = 0; made < opts.structureCount && attempt < opts.structureCount * 40; attempt++) {
-    const template = pickStructure(rng);
+    // Always draw the pick, so the random sequence is unchanged when no building is forced.
+    const picked = pickStructure(rng);
+    const template: StructureTemplate = !hasBuilding && made === opts.structureCount - 1 ? BUILDING_TEMPLATE : picked;
     const { shape, height } = template.make(rng);
     const x = rng.range(-limit, limit);
     const z = rng.range(-limit, limit);
@@ -180,6 +227,7 @@ function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions
     const radius = boundRadiusOf(shape);
     if (!isFree(x, z, radius, 18) || !footprintIsUsable(terrain, x, z, radius, template.maxSlope)) continue;
     add(template.kind, x, z, yaw, shape, height);
+    hasBuilding ||= template.kind === 'building';
     made++;
   }
 
@@ -202,8 +250,33 @@ function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions
   return obstacles;
 }
 
+/**
+ * Carves rivers, lakes and ponds into the terrain and bridges every river.
+ * A layout that strands more than a sliver of the battlefield out of reach
+ * of the player's spawn is undone and replanned: first with other rivers,
+ * then with lakes alone, and finally with no water at all.
+ */
+export function generateWaterFeatures(seed: number, terrain: Terrain, opts: WorldGenOptions): WorldFeatures {
+  const half = opts.playableHalfSize;
+  const original = terrain.heights.slice();
+  for (let attempt = 0; attempt <= RIVER_LAYOUT_ATTEMPTS; attempt++) {
+    const layoutSeed = (seed + attempt * 0x3c6ef372) >>> 0;
+    const rivers = planRivers(layoutSeed, terrain, half, attempt < RIVER_LAYOUT_ATTEMPTS ? opts.rivers : 0);
+    const lakes = planLakes(layoutSeed, terrain, half, rivers, opts.lakes, opts.ponds);
+    if (rivers.length + lakes.length === 0) break;
+    const level = carveWater(terrain, rivers, lakes, half);
+    const bridges = placeBridges(terrain, level, rivers, half);
+    const water = createWaterMap(terrain, level, bridges, half + WATER_FIELD_MARGIN);
+    const nav = new NavGrid(half, water, bridges);
+    if (nav.regionShare(nav.regionAt(0, 0)) >= MIN_REACHABLE_SHARE) return { water, rivers, lakes, bridges };
+    terrain.heights.set(original);
+  }
+  return dryFeatures(terrain);
+}
+
 export function generateWorld(seed: number, opts: WorldGenOptions = DEFAULT_WORLD_OPTIONS): World {
   const terrain = generateHeights(seed, opts);
-  const obstacles = generateObstacles(seed, terrain, opts);
-  return new World(seed, terrain, obstacles, opts.playableHalfSize);
+  const features = generateWaterFeatures(seed, terrain, opts);
+  const obstacles = generateObstacles(seed, terrain, opts, features);
+  return new World(seed, terrain, obstacles, opts.playableHalfSize, features);
 }

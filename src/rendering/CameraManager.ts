@@ -153,7 +153,7 @@ export class CameraManager {
       const t = Math.max(0, this.hit.t - COLLISION_MARGIN / Math.max(len, 1e-3));
       this.tmp.lerpVectors(this.pivot, this.tmp, t);
     }
-    const ground = this.world.heightAt(this.tmp.x, this.tmp.z) + CAMERA_GROUND_CLEARANCE;
+    const ground = this.world.surfaceHeightAt(this.tmp.x, this.tmp.z) + CAMERA_GROUND_CLEARANCE;
     if (this.tmp.y < ground) this.tmp.y = ground;
 
     if (!this.chaseInitialised) {

@@ -4,7 +4,9 @@ import { TANK_SPECS, WORLD } from '../src/config/settings';
 import type { TankKind } from '../src/config/settings';
 import { Tank } from '../src/entities/Tank';
 import { angleDiff, DEG, forwardX, forwardZ, wrapAngle } from '../src/utils/math';
+import type { HeightField } from '../src/world/Terrain';
 import { Terrain } from '../src/world/Terrain';
+import { World } from '../src/world/World';
 
 const DT = 1 / 60;
 
@@ -25,9 +27,14 @@ function rampTerrain(slopeX: number, slopeZ: number): Terrain {
   return terrain;
 }
 
-function makeTank(kind: TankKind, terrain: Terrain, x = 0, z = 0, heading = 0): Tank {
+/** A height field that is not a Terrain, standing in for surfaces such as bridge decks. */
+function planeGround(base: number, slopeX: number): HeightField {
+  return { heightAt: (x: number): number => base + slopeX * x };
+}
+
+function makeTank(kind: TankKind, ground: HeightField, x = 0, z = 0, heading = 0): Tank {
   const tank = new Tank(1, TANK_SPECS[kind], kind === 'player' ? 'player' : 'enemy');
-  tank.placeAt(x, z, heading, terrain);
+  tank.placeAt(x, z, heading, ground);
   return tank;
 }
 
@@ -40,13 +47,13 @@ interface DriveOptions {
 }
 
 /** Runs the hull physics for `seconds` of simulated time. */
-function drive(tank: Tank, terrain: Terrain, seconds: number, options: DriveOptions = {}): void {
+function drive(tank: Tank, ground: HeightField, seconds: number, options: DriveOptions = {}): void {
   const ticks = Math.round(seconds / DT);
   for (let i = 0; i < ticks; i++) {
     tank.controls.throttle = options.throttle ?? 0;
     tank.controls.turn = options.turn ?? 0;
-    tank.integrateMotion(DT, terrain, options.speedMultiplier ?? 1);
-    tank.settleOnTerrain(terrain, DT);
+    tank.integrateMotion(DT, ground, options.speedMultiplier ?? 1);
+    tank.settleOnGround(ground, DT);
     options.onTick?.(i);
   }
 }
@@ -314,9 +321,20 @@ describe('Tank on slopes', () => {
     drive(uphill, terrain, 0.5);
     expect(uphill.speed).toBeLessThan(flat.speed);
   });
+
+  it('climbs any height field exactly as it climbs terrain of the same shape', () => {
+    const onTerrain = makeTank('player', terrain, 0, 0, Math.PI / 2);
+    drive(onTerrain, terrain, 2, { throttle: 1 });
+    const plane = planeGround(0, 0.3);
+    const onPlane = makeTank('player', plane, 0, 0, Math.PI / 2);
+    drive(onPlane, plane, 2, { throttle: 1 });
+    expect(onPlane.speed).toBeCloseTo(onTerrain.speed, 4);
+    expect(onPlane.x).toBeCloseTo(onTerrain.x, 4);
+    expect(onPlane.y).toBeCloseTo(onTerrain.y, 4);
+  });
 });
 
-describe('Tank.settleOnTerrain', () => {
+describe('Tank.settleOnGround', () => {
   it('levels the hull and puts it on the ground on flat terrain', () => {
     const terrain = flatTerrain();
     const tank = makeTank('standard', terrain, 12, -7, 0.9);
@@ -381,12 +399,32 @@ describe('Tank.settleOnTerrain', () => {
     const tank = new Tank(1, TANK_SPECS.standard, 'enemy');
     tank.x = 10;
     tank.heading = Math.PI / 2;
-    tank.settleOnTerrain(terrain, DT);
+    tank.settleOnGround(terrain, DT);
     const target = -0.3 / Math.sqrt(1.09);
     expect(tank.up.x).toBeLessThan(0);
     expect(tank.up.x).toBeGreaterThan(target);
-    for (let i = 0; i < 180; i++) tank.settleOnTerrain(terrain, DT);
+    for (let i = 0; i < 180; i++) tank.settleOnGround(terrain, DT);
     expect(tank.up.x).toBeCloseTo(target, 3);
+  });
+
+  it('rests on a World and drives over it exactly as over its terrain', () => {
+    const terrain = rampTerrain(0.2, -0.1);
+    const world = new World(1, terrain, [], 250);
+    const onWorld = makeTank('player', world, 15, 10, 1.1);
+    const onTerrain = makeTank('player', terrain, 15, 10, 1.1);
+    drive(onWorld, world, 2, { throttle: 1, turn: 0.4 });
+    drive(onTerrain, terrain, 2, { throttle: 1, turn: 0.4 });
+    expect(onWorld.y).toBeCloseTo(onTerrain.y, 9);
+    expect(onWorld.x).toBeCloseTo(onTerrain.x, 9);
+    expect(onWorld.z).toBeCloseTo(onTerrain.z, 9);
+    expect(onWorld.up.distanceTo(onTerrain.up)).toBeLessThan(1e-12);
+  });
+
+  it('rests on any height field, not just terrain', () => {
+    const tank = makeTank('standard', planeGround(6, 0.1), 10, 0, Math.PI / 2);
+    expect(tank.y).toBeCloseTo(7, 6);
+    expect(tank.up.x).toBeCloseTo(-0.1 / Math.sqrt(1.01), 6);
+    expect(tank.up.y).toBeCloseTo(1 / Math.sqrt(1.01), 6);
   });
 });
 
@@ -498,7 +536,7 @@ describe('Tank.updateTurret', () => {
       tank.controls.throttle = 0;
       tank.controls.turn = i < 60 ? 1 : 0;
       tank.integrateMotion(DT, terrain, 1);
-      tank.settleOnTerrain(terrain, DT);
+      tank.settleOnGround(terrain, DT);
       tank.updateTurret(DT);
       if (i === 119 || i === 239) {
         expect(angleDiff(wrapAngle(tank.heading + tank.turretYaw), Math.PI / 2)).toBeCloseTo(0, 6);

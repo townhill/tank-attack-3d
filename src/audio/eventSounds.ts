@@ -83,9 +83,11 @@ function playImpact(mixer: Mixer, event: ImpactEvent, retro: boolean): void {
   let recipe: typeof terrainImpact;
   switch (event.surface) {
     case 'terrain':
+    case 'water':
       recipe = terrainImpact;
       break;
     case 'obstacle':
+    case 'bridge':
       recipe = obstacleImpact;
       break;
     case 'tank':

@@ -4,6 +4,7 @@
  * for the presentation layer. Contains no rendering code.
  */
 import { EnemyController } from '../ai/EnemyAI';
+import { NavPlanner } from '../ai/NavPlanner';
 import { computeDamage, hitZone, applyDamage } from '../combat/DamageSystem';
 import { createProjectileHit, fireWeapon, stepProjectile } from '../combat/WeaponSystem';
 import type { Difficulty, DifficultySpec, EnemyKind, MapSize } from '../config/settings';
@@ -13,6 +14,7 @@ import type { Projectile } from '../entities/Projectile';
 import { Tank } from '../entities/Tank';
 import { headingOf, TAU } from '../utils/math';
 import { hashSeed, Random } from '../utils/random';
+import type { PushResult } from '../world/Collision';
 import { circleVsObstacle, createPushResult } from '../world/Collision';
 import type { Obstacle } from '../world/Obstacle';
 import type { World } from '../world/World';
@@ -64,6 +66,8 @@ const SPAWN_ATTEMPTS = 40;
 const SPAWN_DISTANCE_SPREAD = 220;
 const SPAWN_MAX_SLOPE = 0.3;
 const SPAWN_TANK_CLEARANCE = 30;
+/** Enemies spawn at least this far from deep water, beyond their own radius (metres). */
+const SPAWN_WATER_CLEARANCE = 8;
 
 export class Simulation {
   readonly world: World;
@@ -76,6 +80,8 @@ export class Simulation {
   readonly enemies: EnemyEntry[] = [];
   readonly projectiles = new ProjectilePool(PROJECTILE.poolSize);
   readonly waves: WaveManager;
+  /** Route planning shared by every enemy. */
+  readonly navigation: NavPlanner;
   readonly stats: GameStats = createStats();
   readonly events: GameEvent[] = [];
   time = 0;
@@ -94,8 +100,9 @@ export class Simulation {
     this.difficultySpec = DIFFICULTY[options.difficulty];
     this.rng = new Random(options.seed ^ hashSeed(options.difficulty));
     this.waves = new WaveManager(this.difficultySpec, this.rng, options.firstWaveDelay ?? 3);
+    this.navigation = new NavPlanner(this.world);
     this.player = new Tank(0, TANK_SPECS.player, 'player');
-    this.player.placeAt(0, 0, 0, this.world.terrain);
+    this.player.placeAt(0, 0, 0, this.world);
     this.tanks.push(this.player);
   }
 
@@ -126,10 +133,10 @@ export class Simulation {
     this.applyPlayerCommand(command);
     this.updateAI(dt);
     const enemySpeed = this.difficultySpec.enemySpeedMultiplier;
-    for (const t of this.tanks) t.integrateMotion(dt, this.world.terrain, t.faction === 'enemy' ? enemySpeed : 1);
+    for (const t of this.tanks) t.integrateMotion(dt, this.world, (t.faction === 'enemy' ? enemySpeed : 1) * this.wadingFactor(t));
     this.resolveCollisions();
     for (const t of this.tanks) {
-      t.settleOnTerrain(this.world.terrain, dt);
+      t.settleOnGround(this.world, dt);
       t.updateTurret(dt);
       t.updateTimers(dt);
     }
@@ -165,6 +172,7 @@ export class Simulation {
 
   private updateAI(dt: number): void {
     const scale = aimErrorScale(Math.max(1, this.waves.wave));
+    this.navigation.beginTick(this.tanks);
     for (const entry of this.enemies) {
       entry.controller.update({
         world: this.world,
@@ -176,6 +184,7 @@ export class Simulation {
         dt,
         think: (this.tick + entry.tank.id) % AI_THINK_INTERVAL === 0,
         time: this.time,
+        navigation: this.navigation,
       });
     }
   }
@@ -192,15 +201,7 @@ export class Simulation {
         t.z += push.nz * push.depth;
         this.dampVelocityInto(t, push.nx, push.nz);
       }
-      const limit = world.playableHalfSize - r;
-      if (Math.abs(t.x) > limit) {
-        this.dampVelocityInto(t, -Math.sign(t.x), 0);
-        t.x = Math.sign(t.x) * limit;
-      }
-      if (Math.abs(t.z) > limit) {
-        this.dampVelocityInto(t, 0, -Math.sign(t.z));
-        t.z = Math.sign(t.z) * limit;
-      }
+      this.clampToPlayable(t);
     }
 
     // Tank-versus-tank: heavier tanks shove lighter ones.
@@ -229,6 +230,51 @@ export class Simulation {
         this.dampVelocityInto(b, nx, nz);
       }
     }
+
+    // Water last, so no shove can leave a tank in a river or over a bridge's edge.
+    for (const t of this.tanks) this.keepOutOfWater(t);
+  }
+
+  private clampToPlayable(t: Tank): void {
+    const limit = this.world.playableHalfSize - t.spec.collisionRadius;
+    if (Math.abs(t.x) > limit) {
+      this.dampVelocityInto(t, -Math.sign(t.x), 0);
+      t.x = Math.sign(t.x) * limit;
+    }
+    if (Math.abs(t.z) > limit) {
+      this.dampVelocityInto(t, 0, -Math.sign(t.z));
+      t.z = Math.sign(t.z) * limit;
+    }
+  }
+
+  /**
+   * Holds a tank between the kerbs of a bridge it is crossing; otherwise keeps
+   * it out of water too deep to wade and outside every bridge's parapets.
+   */
+  private keepOutOfWater(t: Tank): void {
+    const world = this.world;
+    const push = this.push;
+    const r = t.spec.collisionRadius;
+    t.bridgeId = world.trackBridge(t.bridgeId, t.x, t.z);
+    if (t.bridgeId >= 0) {
+      if (world.kerbPush(t.bridgeId, t.x, t.z, r, push)) this.shove(t, push);
+      return;
+    }
+    if (world.water.pushOut(t.x, t.z, r, push)) this.shove(t, push);
+    if (world.parapetPush(t.x, t.z, r, push)) this.shove(t, push);
+  }
+
+  /** Moves a tank out along a push and stops it driving back into whatever pushed it. */
+  private shove(t: Tank, push: PushResult): void {
+    t.x += push.nx * push.depth;
+    t.z += push.nz * push.depth;
+    this.dampVelocityInto(t, push.nx, push.nz);
+    this.clampToPlayable(t);
+  }
+
+  /** Top-speed multiplier from wading; a tank on a bridge is clear of the water below. */
+  private wadingFactor(t: Tank): number {
+    return t.bridgeId >= 0 ? 1 : this.world.water.wadingFactor(t.x, t.z);
   }
 
   /** Removes the part of a tank's motion heading into a surface with normal (nx, nz). */
@@ -386,10 +432,11 @@ export class Simulation {
       const z = this.player.z - Math.cos(angle) * dist;
       if (!world.isInsidePlayable(x, z, 30)) continue;
       if (world.terrain.slopeAt(x, z, 3) > SPAWN_MAX_SLOPE) continue;
+      if (!this.isReachableDryGround(x, z, spec.collisionRadius)) continue;
       if (this.isBlocked(x, z, spec.collisionRadius + 5)) continue;
       const tank = new Tank(this.nextTankId++, spec, 'enemy');
       const towardsPlayer = headingOf(this.player.x - x, this.player.z - z);
-      tank.placeAt(x, z, towardsPlayer + this.rng.range(-1.2, 1.2), world.terrain);
+      tank.placeAt(x, z, towardsPlayer + this.rng.range(-1.2, 1.2), world);
       const controller = new EnemyController(tank, kind, this.rng, this.difficultySpec, world.playableHalfSize);
       this.tanks.push(tank);
       this.enemies.push({ tank, kind, controller });
@@ -397,6 +444,13 @@ export class Simulation {
       return true;
     }
     return false;
+  }
+
+  /** Dry ground clear of deep water, on the same bank network as the player. */
+  private isReachableDryGround(x: number, z: number, radius: number): boolean {
+    const world = this.world;
+    if (world.water.depthAt(x, z) > 0 || world.water.blockedDistance(x, z) < radius + SPAWN_WATER_CLEARANCE) return false;
+    return world.nav.regionAt(x, z) === world.nav.regionAt(this.player.x, this.player.z);
   }
 
   private isBlocked(x: number, z: number, radius: number): boolean {

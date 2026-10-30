@@ -97,6 +97,8 @@ export class Effects {
   private debrisActive = 0;
   private readonly emitters: Emitter[] = [];
   private spec: GraphicsModeSpec | null = null;
+  /** Spray colours for shells landing in water, from the current mode. */
+  private splash: readonly number[] = [0xffffff];
   private readonly colour = new Color();
   private readonly colourB = new Color();
   private readonly spawn: ParticleSpawn = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, size: 1, life: 1, gravity: 0, drag: 0, growth: 0, alpha: 1 };
@@ -155,6 +157,7 @@ export class Effects {
   applyMode(spec: GraphicsModeSpec): void {
     this.spec = spec;
     this.debrisMaterial.linewidth = spec.edgeWidth;
+    this.splash = [0xffffff, spec.water.shore, spec.water.shore];
   }
 
   /** Keeps particle sizes in metres for the current viewport and FOV. */
@@ -187,9 +190,14 @@ export class Effects {
           this.burst(e.x, e.y + 0.3, e.z, 16, 0, 9, 0, 9, 0.6, hot, 0.25, 14);
           this.puff(e.x, e.y + 0.5, e.z, 14, 0, 3.5, 0, 2.4, 2.6);
           this.ring(e.x, e.y + 0.4, e.z, 7, 0.45, hot[2] ?? 0xffd23f);
-        } else if (e.surface === 'obstacle') {
+        } else if (e.surface === 'water') {
+          // A column of spray that falls back, and a ripple spreading over the surface.
+          this.burst(e.x, e.y + 0.2, e.z, 26, 0, 11, 0, 4, 0.9, this.splash, 0.28, 16);
+          this.puff(e.x, e.y + 0.6, e.z, 8, 0, 2.5, 0, 1.6, 1.8);
+          this.ring(e.x, e.y + 0.05, e.z, 6, 0.7, spec.water.shore);
+        } else if (e.surface === 'obstacle' || e.surface === 'bridge') {
           this.burst(e.x, e.y, e.z, 24, 0, 4, 0, 14, 0.5, hot, 0.22, 10);
-          this.debris(e.x, e.y, e.z, 6, spec.structure.edge, 8, 1.2);
+          this.debris(e.x, e.y, e.z, 6, e.surface === 'bridge' ? spec.bridge.edge : spec.structure.edge, 8, 1.2);
         } else {
           this.burst(e.x, e.y, e.z, 30, 0, 3, 0, 16, 0.45, hot, 0.25, 9);
           this.flash(e.x, e.y, e.z, 4, 0.12);

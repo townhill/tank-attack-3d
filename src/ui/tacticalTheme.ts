@@ -46,6 +46,14 @@ export interface TacticalTheme {
   readonly terrainHigh: Rgb;
   readonly mountain: Rgb;
   readonly contour: Rgb;
+  /** Water fill from the shallows to deep water. */
+  readonly waterShallow: Rgb;
+  readonly waterDeep: Rgb;
+  /** Shorelines, the edge of water too deep to wade and the hatching over water. */
+  readonly shore: Rgb;
+  /** Bridge sign outline and deck fill. */
+  readonly bridge: string;
+  readonly bridgeFill: string;
   /** Canvas shadow blur (px) for the glow effect; 0 disables it. */
   readonly glow: number;
 }
@@ -97,6 +105,11 @@ const THEMES: Readonly<Record<GraphicsModeId, TacticalTheme>> = {
     terrainHigh: [14, 76, 32],
     mountain: [5, 32, 12],
     contour: [51, 255, 102],
+    waterShallow: [3, 34, 13],
+    waterDeep: [0, 9, 3],
+    shore: [140, 255, 175],
+    bridge: '#d6ffe0',
+    bridgeFill: 'rgba(51, 255, 102, 0.3)',
     glow: 4,
   },
   neon: {
@@ -121,6 +134,11 @@ const THEMES: Readonly<Record<GraphicsModeId, TacticalTheme>> = {
     terrainHigh: [18, 92, 96],
     mountain: [9, 20, 38],
     contour: [40, 220, 210],
+    waterShallow: [8, 60, 92],
+    waterDeep: [2, 20, 46],
+    shore: [47, 210, 255],
+    bridge: '#ffb84d',
+    bridgeFill: 'rgba(255, 184, 77, 0.32)',
     glow: 6,
     ...NEON_UNITS,
   },
@@ -146,6 +164,11 @@ const THEMES: Readonly<Record<GraphicsModeId, TacticalTheme>> = {
     terrainHigh: [22, 88, 44],
     mountain: [9, 24, 17],
     contour: [70, 230, 120],
+    waterShallow: [20, 80, 110],
+    waterDeep: [6, 32, 58],
+    shore: [111, 220, 255],
+    bridge: '#ffc46b',
+    bridgeFill: 'rgba(255, 196, 107, 0.32)',
     glow: 5,
     ...NEON_UNITS,
   },
@@ -324,6 +347,13 @@ export const GHOST_ALPHA_MAX = 0.7;
 export const VELOCITY_VECTOR_SECONDS = 6;
 /** Obstacle footprints never shrink below this half size (px) so they stay visible when zoomed out. */
 const MIN_FOOTPRINT_PX = 1.5;
+/** Kerb flares of the bridge sign, as a fraction of its half width and at least this many pixels. */
+const BRIDGE_FLARE = 0.7;
+const BRIDGE_MIN_FLARE_PX = 2;
+/** The two kerbs of the bridge sign, either side of its centre line. */
+const KERB_SIDES = [-1, 1] as const;
+/** Spacing of the hatch lines in the water legend sample (px). */
+const WATER_SAMPLE_HATCH = 3;
 const BOUNDARY_DASH: number[] = [8, 5];
 
 /**
@@ -399,6 +429,41 @@ function strokeBuildingRoof(ctx: CanvasRenderingContext2D, x: number, y: number,
   ctx.stroke();
 }
 
+/**
+ * The map sign for a bridge: a deck between two kerb lines whose ends flare
+ * outwards, centred on (x, y) with its long axis turned `angle` radians
+ * clockwise from up (the obstacle footprint convention).
+ */
+export function drawBridgeSymbol(
+  ctx: CanvasRenderingContext2D,
+  theme: TacticalTheme,
+  x: number,
+  y: number,
+  halfLength: number,
+  halfWidth: number,
+  angle: number,
+): void {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  ctx.beginPath();
+  traceRotatedRect(ctx, x, y, halfWidth, halfLength, angle);
+  ctx.fillStyle = theme.bridgeFill;
+  ctx.fill();
+  const flare = Math.max(BRIDGE_MIN_FLARE_PX, halfWidth * BRIDGE_FLARE);
+  ctx.beginPath();
+  for (const side of KERB_SIDES) {
+    const w = side * halfWidth;
+    const out = w + side * flare;
+    ctx.moveTo(x + out * c + (halfLength + flare) * s, y + out * s - (halfLength + flare) * c);
+    ctx.lineTo(x + w * c + halfLength * s, y + w * s - halfLength * c);
+    ctx.lineTo(x + w * c - halfLength * s, y + w * s + halfLength * c);
+    ctx.lineTo(x + out * c - (halfLength + flare) * s, y + out * s + (halfLength + flare) * c);
+  }
+  ctx.strokeStyle = theme.bridge;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+}
+
 /** Fills and strokes the current path; `solid` > 0 adds an extra opaque fill in the stroke colour. */
 function paintFootprint(ctx: CanvasRenderingContext2D, fill: string, stroke: string, solid: number): void {
   const alpha = ctx.globalAlpha;
@@ -428,6 +493,8 @@ export type LegendItem =
   | 'structure'
   | 'building'
   | 'rock'
+  | 'water'
+  | 'bridge'
   | 'boundary';
 
 export const LEGEND_LABELS: Readonly<Record<LegendItem, string>> = {
@@ -442,6 +509,8 @@ export const LEGEND_LABELS: Readonly<Record<LegendItem, string>> = {
   structure: 'STRUCTURE',
   building: 'BUILDING',
   rock: 'ROCK',
+  water: 'WATER',
+  bridge: 'BRIDGE',
   boundary: 'BOUNDARY',
 };
 
@@ -499,6 +568,23 @@ export function drawLegendSymbol(ctx: CanvasRenderingContext2D, theme: TacticalT
       ctx.beginPath();
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       paintFootprint(ctx, theme.rock, theme.rock, 0);
+      break;
+    case 'water': {
+      ctx.fillStyle = rgba(theme.waterDeep, 1);
+      ctx.fillRect(x - 9, y - 5, 18, 10);
+      ctx.strokeStyle = rgba(theme.shore, 0.35);
+      ctx.beginPath();
+      for (let row = y - 5 + WATER_SAMPLE_HATCH; row < y + 5; row += WATER_SAMPLE_HATCH) {
+        ctx.moveTo(x - 9, row + 0.5);
+        ctx.lineTo(x + 9, row + 0.5);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = rgba(theme.shore, 0.9);
+      ctx.strokeRect(x - 9, y - 5, 18, 10);
+      break;
+    }
+    case 'bridge':
+      drawBridgeSymbol(ctx, theme, x, y, 8, 3, Math.PI / 2);
       break;
     case 'boundary':
       ctx.strokeStyle = theme.boundary;

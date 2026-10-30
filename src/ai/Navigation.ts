@@ -6,6 +6,7 @@
 import { AI } from '../config/settings';
 import type { Tank } from '../entities/Tank';
 import { angleDiff, clamp, headingOf } from '../utils/math';
+import type { PlanarVector } from '../world/distanceField';
 import type { Obstacle } from '../world/Obstacle';
 import type { World } from '../world/World';
 
@@ -15,8 +16,11 @@ export interface SteeringOutput {
 }
 
 const nearby: Obstacle[] = [];
+const awayFromWater: PlanarVector = { x: 0, z: 0 };
 const BOUNDARY_SOFT_ZONE = 40;
 const MAX_SAFE_SLOPE = 0.42;
+/** How hard steering turns away from deep water just ahead. */
+const WATER_AVOID_WEIGHT = 1.2;
 
 /**
  * Steers `tank` towards (tx, tz) at `speedFraction` of its top speed.
@@ -96,6 +100,15 @@ export function steerTowards(
     sz -= fz * 0.8;
     sx += rx * 0.6;
     sz += rz * 0.6;
+  }
+
+  // Turn away from water too deep to wade just ahead, unless the way on is a bridge deck.
+  const water = world.water;
+  if (tank.bridgeId < 0 && water.blockedDistance(probeX, probeZ) < radius && world.trackBridge(-1, probeX, probeZ) < 0) {
+    // Read the way out from the tank's own position: inside the water the field's slope can flip from tick to tick.
+    water.blocked.gradient(tank.x, tank.z, awayFromWater);
+    sx += awayFromWater.x * WATER_AVOID_WEIGHT - fx * 0.5;
+    sz += awayFromWater.z * WATER_AVOID_WEIGHT - fz * 0.5;
   }
 
   const desiredHeading = headingOf(sx, sz);

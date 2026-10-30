@@ -11,6 +11,7 @@ import type { GameEvent } from '../game/events';
 import type { Simulation } from '../game/Simulation';
 import type { Random } from '../utils/random';
 import type { World } from '../world/World';
+import { BridgeView } from './BridgeView';
 import { Effects } from './Effects';
 import type { GraphicsModeSpec } from './GraphicsModes';
 import { MaterialLibrary } from './Materials';
@@ -20,6 +21,7 @@ import type { Renderer } from './Renderer';
 import { Sky } from './Sky';
 import { TankView } from './TankView';
 import { TerrainView } from './TerrainView';
+import { WaterView } from './WaterView';
 
 const SUN_OFFSET = new Vector3(-140, 220, 90);
 const SHADOW_EXTENT = 75;
@@ -58,8 +60,11 @@ export class WorldView {
   readonly effects: Effects;
   private readonly scene: Scene;
   private terrain: TerrainView;
+  private water: WaterView;
+  private bridges: BridgeView;
   private obstacles: ObstacleView;
   private sky: Sky;
+  private world: World;
   private readonly projectiles: ProjectileView;
   private readonly tankViews = new Map<number, TankView>();
   private readonly tankKinds = new Map<number, TankKind>();
@@ -92,10 +97,13 @@ export class WorldView {
     this.sun.shadow.normalBias = 0.6;
     this.scene.add(this.hemi, this.sun, this.sun.target);
 
+    this.world = world;
     this.terrain = new TerrainView(world, this.materials);
+    this.water = new WaterView(world, this.materials);
+    this.bridges = new BridgeView(world, this.materials);
     this.obstacles = new ObstacleView(world, this.materials);
     this.sky = new Sky(world.seed, this.materials);
-    this.scene.add(this.terrain.group, this.obstacles.group, this.sky.group);
+    this.scene.add(this.terrain.group, this.water.group, this.bridges.group, this.obstacles.group, this.sky.group);
     this.projectiles = new ProjectileView(this.scene, projectileCapacity, this.materials);
     this.effects = new Effects(this.scene, this.materials, rng);
   }
@@ -103,12 +111,17 @@ export class WorldView {
   /** Rebuilds static scenery for a new battlefield and drops all tank views. */
   setWorld(world: World): void {
     this.terrain.dispose();
+    this.water.dispose();
+    this.bridges.dispose();
     this.obstacles.dispose();
     this.sky.dispose();
+    this.world = world;
     this.terrain = new TerrainView(world, this.materials);
+    this.water = new WaterView(world, this.materials);
+    this.bridges = new BridgeView(world, this.materials);
     this.obstacles = new ObstacleView(world, this.materials);
     this.sky = new Sky(world.seed, this.materials);
-    this.scene.add(this.terrain.group, this.obstacles.group, this.sky.group);
+    this.scene.add(this.terrain.group, this.water.group, this.bridges.group, this.obstacles.group, this.sky.group);
     this.clearTanks();
     this.effects.clear();
     if (this.spec) this.applyModeToScenery(this.spec);
@@ -145,6 +158,7 @@ export class WorldView {
 
   private applyModeToScenery(spec: GraphicsModeSpec): void {
     this.terrain.applyMode(spec, true);
+    this.water.applyMode(spec);
     this.obstacles.applyMode(spec);
     this.sky.applyMode(spec);
   }
@@ -191,7 +205,8 @@ export class WorldView {
       }
       const distance = Math.hypot(tank.x - camera.x, tank.z - camera.z);
       view.sync(tank, alpha, dt, time, distance);
-      if (tank.alive && Math.abs(tank.speed) > DUST_SPEED && distance < 300 && this.rng.next() < dt * Math.abs(tank.speed) * 1.2) {
+      const wading = tank.bridgeId < 0 && this.world.water.depthAt(tank.x, tank.z) > 0;
+      if (tank.alive && !wading && Math.abs(tank.speed) > DUST_SPEED && distance < 300 && this.rng.next() < dt * Math.abs(tank.speed) * 1.2) {
         const back = tank.spec.hitHalfExtents.z * 0.9;
         const side = this.rng.chance(0.5) ? 1 : -1;
         const w = tank.spec.hitHalfExtents.x * 0.8;
@@ -238,6 +253,8 @@ export class WorldView {
   dispose(): void {
     this.clearTanks();
     this.terrain.dispose();
+    this.water.dispose();
+    this.bridges.dispose();
     this.obstacles.dispose();
     this.sky.dispose();
     this.projectiles.dispose();

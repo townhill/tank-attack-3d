@@ -6,7 +6,7 @@ import { Matrix4, Quaternion, Vector3 } from 'three';
 import type { Faction, TankSpec } from '../config/settings';
 import { WORLD } from '../config/settings';
 import { angleDiff, clamp, moveTowards, moveTowardsAngle, wrapAngle } from '../utils/math';
-import type { Terrain } from '../world/Terrain';
+import type { HeightField } from '../world/Terrain';
 
 export interface TankControls {
   /** -1 (full reverse) .. 1 (full ahead). */
@@ -32,8 +32,8 @@ const CLIMB_PENALTY = 1.2;
 const MIN_CLIMB_SPEED = 0.35;
 /** Fractional top-speed gain per unit of downhill gradient (capped at 0.3 gradient). */
 const DESCENT_BONUS = 0.5;
-/** Responsiveness of the hull's alignment to terrain (per second). */
-const TERRAIN_ALIGN_RATE = 10;
+/** Responsiveness of the hull's alignment to the ground (per second). */
+const GROUND_ALIGN_RATE = 10;
 const RECOIL_RECOVERY = 2.2;
 const DAMAGE_FLASH_DECAY = 3.5;
 /** Gunner's sight offset from the gun pivot (turret frame, metres). */
@@ -81,6 +81,8 @@ export class Tank {
   damageFlash = 0;
   trackPhaseLeft = 0;
   trackPhaseRight = 0;
+  /** Index of the bridge the tank is crossing, or -1; kept up to date by the simulation. */
+  bridgeId = -1;
 
   readonly controls: TankControls = { throttle: 0, turn: 0, fire: false };
   readonly prev: TankSnapshot = { x: 0, y: 0, z: 0, turretYaw: 0, gunPitch: 0, orientation: new Quaternion() };
@@ -101,13 +103,14 @@ export class Tank {
     return 1 - clamp(this.reload / this.spec.weapon.reloadTime, 0, 1);
   }
 
-  placeAt(x: number, z: number, heading: number, terrain: Terrain): void {
+  placeAt(x: number, z: number, heading: number, ground: HeightField): void {
     this.x = x;
     this.z = z;
     this.heading = wrapAngle(heading);
     this.speed = 0;
     this.angularVelocity = 0;
-    this.settleOnTerrain(terrain, 0);
+    this.bridgeId = -1;
+    this.settleOnGround(ground, 0);
     this.aimDirection.set(Math.sin(heading), 0, -Math.cos(heading));
     this.saveSnapshot();
   }
@@ -123,7 +126,7 @@ export class Tank {
   }
 
   /** Applies throttle/turn input with inertia, friction and slope effects. */
-  integrateMotion(dt: number, terrain: Terrain, speedMultiplier: number): void {
+  integrateMotion(dt: number, ground: HeightField, speedMultiplier: number): void {
     const s = this.spec;
     const c = this.alive ? this.controls : NO_CONTROLS;
     const maxForward = s.maxSpeed * speedMultiplier;
@@ -135,7 +138,7 @@ export class Tank {
     const fz = -Math.cos(this.heading);
     const probe = 2.5 * s.scale;
     const rise =
-      (terrain.heightAt(this.x + fx * probe, this.z + fz * probe) - terrain.heightAt(this.x - fx * probe, this.z - fz * probe)) /
+      (ground.heightAt(this.x + fx * probe, this.z + fz * probe) - ground.heightAt(this.x - fx * probe, this.z - fz * probe)) /
       (2 * probe);
     // The engine can't hold top speed up a hill; going down it runs a little faster.
     const climb = rise * Math.sign(throttle);
@@ -169,7 +172,7 @@ export class Tank {
   }
 
   /** Places the hull on the ground and aligns it with the local slope. */
-  settleOnTerrain(terrain: Terrain, dt: number): void {
+  settleOnGround(ground: HeightField, dt: number): void {
     const s = this.spec;
     const halfLength = s.hitHalfExtents.z * 0.85;
     const halfWidth = s.hitHalfExtents.x * 0.85;
@@ -177,18 +180,18 @@ export class Tank {
     const fz = -Math.cos(this.heading);
     const rx = Math.cos(this.heading);
     const rz = Math.sin(this.heading);
-    const fl = terrain.heightAt(this.x + fx * halfLength - rx * halfWidth, this.z + fz * halfLength - rz * halfWidth);
-    const fr = terrain.heightAt(this.x + fx * halfLength + rx * halfWidth, this.z + fz * halfLength + rz * halfWidth);
-    const bl = terrain.heightAt(this.x - fx * halfLength - rx * halfWidth, this.z - fz * halfLength - rz * halfWidth);
-    const br = terrain.heightAt(this.x - fx * halfLength + rx * halfWidth, this.z - fz * halfLength + rz * halfWidth);
-    const centre = terrain.heightAt(this.x, this.z);
+    const fl = ground.heightAt(this.x + fx * halfLength - rx * halfWidth, this.z + fz * halfLength - rz * halfWidth);
+    const fr = ground.heightAt(this.x + fx * halfLength + rx * halfWidth, this.z + fz * halfLength + rz * halfWidth);
+    const bl = ground.heightAt(this.x - fx * halfLength - rx * halfWidth, this.z - fz * halfLength - rz * halfWidth);
+    const br = ground.heightAt(this.x - fx * halfLength + rx * halfWidth, this.z - fz * halfLength + rz * halfWidth);
+    const centre = ground.heightAt(this.x, this.z);
     this.y = Math.max(centre, (fl + fr + bl + br) / 4);
 
     scratchForward.set(fx * 2 * halfLength, (fl + fr) / 2 - (bl + br) / 2, fz * 2 * halfLength);
     scratchRight.set(rx * 2 * halfWidth, (fr + br) / 2 - (fl + bl) / 2, rz * 2 * halfWidth);
     scratchUp.crossVectors(scratchRight, scratchForward).normalize();
     if (dt <= 0) this.up.copy(scratchUp);
-    else this.up.lerp(scratchUp, 1 - Math.exp(-TERRAIN_ALIGN_RATE * dt)).normalize();
+    else this.up.lerp(scratchUp, 1 - Math.exp(-GROUND_ALIGN_RATE * dt)).normalize();
     this.updateOrientation();
   }
 

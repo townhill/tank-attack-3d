@@ -19,6 +19,32 @@ export const WORLD = {
   gravity: 9.81,
   rockCount: 75,
   structureCount: 24,
+  /** Rivers crossing a standard map; scales with the side length. */
+  riverCount: 1,
+  /** Lakes and ponds on a standard map; scale with the area. */
+  lakeCount: 1,
+  pondCount: 2,
+} as const;
+
+export const WATER = {
+  /** Water deeper than this stops a tank (metres). */
+  impassableDepth: 1.2,
+  /** Top-speed multiplier when wading at the impassable depth; shallower water slows less. */
+  wadingSpeedFactor: 0.45,
+  /** Cell size of the blocked-water distance field (metres). */
+  fieldCellSize: 2.5,
+} as const;
+
+export const BRIDGE = {
+  /** Half the road width between the kerbs: a heavy tank fits with room to steer. */
+  deckHalfWidth: 7,
+  /** Deck length resting on each bank beyond the river and its banks (metres). */
+  bankOverlap: 8,
+  /** Steepest gradient of the earth ramps leading up to a deck. */
+  maxRampGrade: 0.18,
+  /** Shortest and longest distance between neighbouring bridges along a river (metres). */
+  minSpacing: 220,
+  maxSpacing: 380,
 } as const;
 
 export type TankKind = 'player' | 'standard' | 'heavy' | 'scout';
@@ -309,6 +335,28 @@ export const AI = {
   unstickTime: 1.6,
   avoidLookAhead: 22,
   separationRadius: 14,
+} as const;
+
+export const NAV = {
+  /** Path searches started per simulation tick across all enemies. */
+  plansPerTick: 2,
+  /** Grid cells one search may expand before settling for a partial route. */
+  searchBudget: 8000,
+  /** Re-plan when the goal has moved this far since the route was planned (metres)... */
+  replanGoalShift: 25,
+  /** ...or when a route to a goal that has moved at all is this old (seconds)... */
+  replanInterval: 3,
+  /** ...or when the tank has strayed this far from its route (metres). */
+  strayDistance: 20,
+  /** Distance at which a waypoint counts as reached; bridge waypoints use the tighter one (metres). */
+  waypointRadius: 8,
+  bridgeWaypointRadius: 4,
+  /** Tanks keep this far right of a bridge's centreline on the deck... */
+  laneOffset: 2.5,
+  /** ...and further right on the approaches, so a tank waiting there leaves room for traffic coming off (metres). */
+  approachLaneOffset: 6,
+  /** Largest extra cost one enemy's own preference adds to a bridge, so the pack spreads over several (metres). */
+  bridgePreference: 60,
 } as const;
 
 export const PROJECTILE = {
