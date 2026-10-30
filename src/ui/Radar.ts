@@ -7,11 +7,14 @@
 import type { Tank } from '../entities/Tank';
 import type { Simulation } from '../game/Simulation';
 import { clamp, TAU } from '../utils/math';
+import { PARAPET_THICKNESS } from '../world/Bridge';
 import type { Obstacle } from '../world/Obstacle';
+import type { World } from '../world/World';
 import type { Point2 } from './MapProjection';
 import { bearingOf, clampToRadius, formatDistance, rotateToView, sweepLag, viewAngle } from './MapProjection';
 import type { GraphicsModeId, TacticalTheme } from './tacticalTheme';
 import {
+  drawBridgeSymbol,
   drawChevron,
   drawUnitSymbol,
   drawWreck,
@@ -22,6 +25,7 @@ import {
   traceRotatedRect,
   unitColor,
 } from './tacticalTheme';
+import { ShorelineIndex } from './tacticalWater';
 import './tactical.css';
 
 export type RadarOrientation = 'heading-up' | 'north-up';
@@ -61,6 +65,10 @@ const FRIENDLY_SHELL_PX = 1.6;
 const LABEL_OUTLINE = 'rgba(0, 0, 0, 0.75)';
 const BOUNDARY_DASH: number[] = [4, 3];
 const NO_DASH: number[] = [];
+const SHORE_ALPHA = 0.8;
+/** Smallest bridge sign on the scope, as half its length and half its width (px). */
+const MIN_BRIDGE_HALF_LENGTH_PX = 3;
+const MIN_BRIDGE_HALF_WIDTH_PX = 1.5;
 
 export class Radar {
   private readonly canvas: HTMLCanvasElement;
@@ -79,6 +87,10 @@ export class Radar {
   private sweepClear = '';
   private sweepTrail = '';
   private sweepLine = '';
+  private shoreStroke = '';
+  private shores: ShorelineIndex | null = null;
+  private shoresWorld: World | null = null;
+  private readonly shoreSegments: number[] = [];
   private readonly nearby: Obstacle[] = [];
   private readonly point: Point2 = { x: 0, y: 0 };
   private readonly direction: Point2 = { x: 0, y: 0 };
@@ -90,7 +102,7 @@ export class Radar {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('Radar: 2D canvas context unavailable');
     this.ctx = ctx;
-    this.applySweepColours();
+    this.applyThemeColours();
     parent.appendChild(this.canvas);
     this.observer = new ResizeObserver(() => {
       this.resize();
@@ -115,7 +127,7 @@ export class Radar {
 
   setTheme(mode: GraphicsModeId): void {
     this.theme = tacticalTheme(mode);
-    this.applySweepColours();
+    this.applyThemeColours();
   }
 
   setRange(metres: number): void {
@@ -144,6 +156,7 @@ export class Radar {
     ctx.arc(0, 0, radius, 0, TAU);
     ctx.clip();
     this.drawBoundary(sim, up, pxPerMetre, radius);
+    this.drawWater(sim, up, pxPerMetre);
     this.drawObstacles(sim, up, pxPerMetre);
     this.drawSweep(radius);
     this.drawShells(sim, up, pxPerMetre);
@@ -171,7 +184,47 @@ export class Radar {
     this.canvas.remove();
   }
 
-  private applySweepColours(): void {
+  /** Shorelines and bridges within range. */
+  private drawWater(sim: Simulation, up: number, k: number): void {
+    const world = sim.world;
+    if (this.shoresWorld !== world) {
+      this.shoresWorld = world;
+      this.shores = world.water.maxLevel === -Infinity ? null : new ShorelineIndex(world);
+    }
+    const shores = this.shores;
+    if (!shores) return;
+    const ctx = this.ctx;
+    const p = sim.player;
+    const segments = shores.query(p.x, p.z, this.range, this.shoreSegments);
+    ctx.beginPath();
+    for (let n = 0; n < segments.length; n += 4) {
+      const a = this.toScope(segments[n]! - p.x, segments[n + 1]! - p.z, up, k);
+      const ax = a.x;
+      const ay = a.y;
+      const b = this.toScope(segments[n + 2]! - p.x, segments[n + 3]! - p.z, up, k);
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.strokeStyle = this.shoreStroke;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    for (const bridge of world.bridges) {
+      const dx = bridge.x - p.x;
+      const dz = bridge.z - p.z;
+      const reach = this.range + bridge.halfLength;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      const q = this.toScope(dx, dz, up, k);
+      drawBridgeSymbol(
+        ctx, this.theme, q.x, q.y,
+        Math.max(MIN_BRIDGE_HALF_LENGTH_PX, bridge.halfLength * k),
+        Math.max(MIN_BRIDGE_HALF_WIDTH_PX, (bridge.halfWidth + PARAPET_THICKNESS) * k),
+        viewAngle(bridge.yaw, up),
+      );
+    }
+  }
+
+  private applyThemeColours(): void {
+    this.shoreStroke = rgba(this.theme.shore, SHORE_ALPHA);
     const c = this.theme.sweep;
     this.sweepClear = rgba(c, 0);
     this.sweepTrail = rgba(c, SWEEP_TRAIL_ALPHA);

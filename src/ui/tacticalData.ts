@@ -5,6 +5,7 @@
 import type { EnemyKind } from '../config/settings';
 import type { Tank } from '../entities/Tank';
 import type { Simulation } from '../game/Simulation';
+import { WATER } from '../config/settings';
 import { clamp } from '../utils/math';
 import type { World } from '../world/World';
 import type { TacticalTheme } from './tacticalTheme';
@@ -20,12 +21,21 @@ const MOUNTAIN_CONTOUR_MIX = 0.2;
 /** Pixel spacing of the diagonal hatching over out-of-bounds mountains. */
 const HATCH_SPACING = 7;
 const HATCH_DARKEN = 0.5;
-const MOUNTAIN_DIM = 0.75;
+/** Brightness of everything beyond the playable square, the water there included. */
+export const MOUNTAIN_DIM = 0.75;
 // Hill-shading light from the north-west, about 50 degrees above the horizon.
 const LIGHT_LENGTH = Math.hypot(1, 1.6, 1);
 const LIGHT_X = -1 / LIGHT_LENGTH;
 const LIGHT_Y = 1.6 / LIGHT_LENGTH;
 const LIGHT_Z = -1 / LIGHT_LENGTH;
+/** Water this deep or deeper takes the full deep-water colour (metres). */
+export const WATER_SHADE_DEPTH = 4;
+/** Pixel rows between the hatch lines drawn over water, so it reads without colour. */
+const WATER_HATCH_SPACING = 4;
+const WATER_HATCH_MIX = 0.16;
+/** How far the shore colour is mixed in along the shoreline and along the edge of water too deep to wade. */
+const SHORELINE_MIX = 0.7;
+const DEEP_EDGE_MIX = 0.3;
 
 interface HeightSamples {
   readonly heights: Float32Array;
@@ -79,6 +89,7 @@ export function shadeRelief(world: World, theme: TacticalTheme, size: number): U
   const mountain = theme.mountain;
   const line = theme.contour;
   const out = new Uint8ClampedArray(n * n * 4);
+  const depths = sampleDepths(world, n);
   for (let j = 0; j < n; j++) {
     const z = -half + (j + 0.5) * step;
     const up = j > 0 ? j - 1 : j;
@@ -88,13 +99,17 @@ export function shadeRelief(world: World, theme: TacticalTheme, size: number): U
       const left = i > 0 ? i - 1 : i;
       const right = i < n - 1 ? i + 1 : i;
       const k = j * n + i;
+      const outside = Math.abs(x) > limit || Math.abs(z) > limit;
+      if (depths && depths[k]! > 0) {
+        shadeWater(out, depths, n, i, j, theme, outside);
+        continue;
+      }
       const h = heights[k]!;
       const hRight = heights[j * n + right]!;
       const hDown = heights[down * n + i]!;
       const dhdx = (hRight - heights[j * n + left]!) / ((right - left) * step);
       const dhdz = (hDown - heights[up * n + i]!) / ((down - up) * step);
       const lambert = (-dhdx * LIGHT_X + LIGHT_Y - dhdz * LIGHT_Z) / Math.sqrt(dhdx * dhdx + 1 + dhdz * dhdz);
-      const outside = Math.abs(x) > limit || Math.abs(z) > limit;
       let light = clamp(0.35 + (0.65 * lambert) / LIGHT_Y, 0.25, 1.45);
       let r: number;
       let g: number;
@@ -139,6 +154,59 @@ export function shadeRelief(world: World, theme: TacticalTheme, size: number): U
     }
   }
   return out;
+}
+
+/** Water depth at pixel centres over the full terrain square, or null when there is no water at all. */
+function sampleDepths(world: World, size: number): Float32Array | null {
+  const water = world.water;
+  if (water.maxLevel === -Infinity) return null;
+  const half = world.terrain.halfSize;
+  const step = (2 * half) / size;
+  const depths = new Float32Array(size * size);
+  for (let j = 0; j < size; j++) {
+    const z = -half + (j + 0.5) * step;
+    for (let i = 0; i < size; i++) depths[j * size + i] = water.depthAt(-half + (i + 0.5) * step, z);
+  }
+  return depths;
+}
+
+/**
+ * One water pixel: shallow-to-deep fill without hill shading or contours,
+ * with the shoreline, the limit of wading and a hatch picked out in the
+ * shore colour. Water beyond the playable square is dimmed like the
+ * mountains around it.
+ */
+function shadeWater(out: Uint8ClampedArray, depths: Float32Array, n: number, i: number, j: number, theme: TacticalTheme, outside: boolean): void {
+  const d = depths[j * n + i]!;
+  const t = clamp(d / WATER_SHADE_DEPTH, 0, 1);
+  const lo = theme.waterShallow;
+  const hi = theme.waterDeep;
+  const line = theme.shore;
+  let r = lo[0] + (hi[0] - lo[0]) * t;
+  let g = lo[1] + (hi[1] - lo[1]) * t;
+  let b = lo[2] + (hi[2] - lo[2]) * t;
+  const left = i > 0 ? depths[j * n + i - 1]! : d;
+  const right = i < n - 1 ? depths[j * n + i + 1]! : d;
+  const up = j > 0 ? depths[(j - 1) * n + i]! : d;
+  const down = j < n - 1 ? depths[(j + 1) * n + i]! : d;
+  const deep = WATER.impassableDepth;
+  let mix = 0;
+  if (left <= 0 || right <= 0 || up <= 0 || down <= 0) mix = SHORELINE_MIX;
+  else if (d > deep !== right > deep || d > deep !== down > deep) mix = DEEP_EDGE_MIX;
+  else if (j % WATER_HATCH_SPACING === 0) mix = WATER_HATCH_MIX;
+  r += (line[0] - r) * mix;
+  g += (line[1] - g) * mix;
+  b += (line[2] - b) * mix;
+  if (outside) {
+    r *= MOUNTAIN_DIM;
+    g *= MOUNTAIN_DIM;
+    b *= MOUNTAIN_DIM;
+  }
+  const o = (j * n + i) * 4;
+  out[o] = r;
+  out[o + 1] = g;
+  out[o + 2] = b;
+  out[o + 3] = 255;
 }
 
 /** Last-known state of an enemy under radar intel. */
