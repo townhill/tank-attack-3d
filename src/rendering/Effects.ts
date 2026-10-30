@@ -1,7 +1,8 @@
 /**
  * Visual effects driven by simulation events: muzzle flashes, impacts,
- * explosions with vector debris and shockwaves, smoke, dust and dynamic
- * lights. All resources are pooled; nothing is allocated per event.
+ * explosions with vector debris and shockwaves, smoke, dust, spray and
+ * wakes from wading tanks, and dynamic lights. All resources are pooled;
+ * nothing is allocated per event.
  */
 import type { InterleavedBufferAttribute, Scene } from 'three';
 import { AdditiveBlending, CanvasTexture, Color, PointLight, Sphere, Sprite, SpriteMaterial, Vector3 } from 'three';
@@ -18,6 +19,8 @@ import { ParticleSystem } from './Particles';
 const LIGHT_POOL = 4;
 const FLASH_POOL = 10;
 const SHOCKWAVE_POOL = 8;
+/** Ripple rings spreading from wading tanks; separate from shockwaves so wakes never steal an explosion's ring. */
+const WAKE_RING_POOL = 12;
 const DEBRIS_POOL = 260;
 const RING_SEGMENTS = 48;
 const WRECK_SMOKE_TIME = 10;
@@ -43,6 +46,8 @@ interface RingSlot {
   life: number;
   maxLife: number;
   radius: number;
+  /** Opacity when the ring appears; it fades to nothing over its life. */
+  peak: number;
 }
 
 interface Emitter {
@@ -84,7 +89,9 @@ export class Effects {
   private readonly smoke = new ParticleSystem(1400, false);
   private readonly lights: LightSlot[] = [];
   private readonly flashes: FlashSlot[] = [];
-  private readonly rings: RingSlot[] = [];
+  private readonly rings: RingSlot[];
+  private readonly wakeRings: RingSlot[];
+  private readonly ringGeometry: LineSegmentsGeometry;
   private readonly flashTexture: CanvasTexture;
   private readonly debrisGeometry: LineSegmentsGeometry;
   private readonly debrisMaterial: LineMaterial;
@@ -133,15 +140,9 @@ export class Effects {
       const a1 = ((i + 1) / RING_SEGMENTS) * Math.PI * 2;
       ringPositions.push(Math.cos(a0), 0, Math.sin(a0), Math.cos(a1), 0, Math.sin(a1));
     }
-    const ringGeometry = new LineSegmentsGeometry().setPositions(new Float32Array(ringPositions));
-    for (let i = 0; i < SHOCKWAVE_POOL; i++) {
-      const material = materials.register(new LineMaterial({ color: 0xffffff, linewidth: 2.2, transparent: true, depthWrite: false, blending: AdditiveBlending }));
-      const lines = new LineSegments2(ringGeometry, material);
-      lines.visible = false;
-      lines.frustumCulled = false;
-      scene.add(lines);
-      this.rings.push({ lines, material, life: 0, maxLife: 1, radius: 1 });
-    }
+    this.ringGeometry = new LineSegmentsGeometry().setPositions(new Float32Array(ringPositions));
+    this.rings = this.createRings(SHOCKWAVE_POOL, 2.2);
+    this.wakeRings = this.createRings(WAKE_RING_POOL, 1.4);
 
     this.debrisPositions.fill(0);
     for (let i = 0; i < DEBRIS_POOL; i++) this.debrisPositions[i * 6 + 1] = this.debrisPositions[i * 6 + 4] = HIDDEN_Y;
@@ -152,6 +153,19 @@ export class Effects {
     const debris = new LineSegments2(this.debrisGeometry, this.debrisMaterial);
     debris.frustumCulled = false;
     scene.add(debris);
+  }
+
+  private createRings(count: number, linewidth: number): RingSlot[] {
+    const slots: RingSlot[] = [];
+    for (let i = 0; i < count; i++) {
+      const material = this.materials.register(new LineMaterial({ color: 0xffffff, linewidth, transparent: true, depthWrite: false, blending: AdditiveBlending }));
+      const lines = new LineSegments2(this.ringGeometry, material);
+      lines.visible = false;
+      lines.frustumCulled = false;
+      this.scene.add(lines);
+      slots.push({ lines, material, life: 0, maxLife: 1, radius: 1, peak: 1 });
+    }
+    return slots;
   }
 
   applyMode(spec: GraphicsModeSpec): void {
@@ -189,12 +203,12 @@ export class Effects {
         if (e.surface === 'terrain') {
           this.burst(e.x, e.y + 0.3, e.z, 16, 0, 9, 0, 9, 0.6, hot, 0.25, 14);
           this.puff(e.x, e.y + 0.5, e.z, 14, 0, 3.5, 0, 2.4, 2.6);
-          this.ring(e.x, e.y + 0.4, e.z, 7, 0.45, hot[2] ?? 0xffd23f);
+          this.ring(this.rings, e.x, e.y + 0.4, e.z, 7, 0.45, hot[2] ?? 0xffd23f);
         } else if (e.surface === 'water') {
           // A column of spray that falls back, and a ripple spreading over the surface.
           this.burst(e.x, e.y + 0.2, e.z, 26, 0, 11, 0, 4, 0.9, this.splash, 0.28, 16);
           this.puff(e.x, e.y + 0.6, e.z, 8, 0, 2.5, 0, 1.6, 1.8);
-          this.ring(e.x, e.y + 0.05, e.z, 6, 0.7, spec.water.shore);
+          this.ring(this.rings, e.x, e.y + 0.05, e.z, 6, 0.7, spec.water.shore);
         } else if (e.surface === 'obstacle' || e.surface === 'bridge') {
           this.burst(e.x, e.y, e.z, 24, 0, 4, 0, 14, 0.5, hot, 0.22, 10);
           this.debris(e.x, e.y, e.z, 6, e.surface === 'bridge' ? spec.bridge.edge : spec.structure.edge, 8, 1.2);
@@ -238,8 +252,8 @@ export class Effects {
     this.puff(x, y, z, Math.round(36 * scale), 0, 5, 0, 7, 4.5);
     this.debris(x, y, z, Math.round(34 * scale), edgeColour, 15 * scale, 2.6);
     this.debris(x, y, z, 10, spec.explosion[1] ?? 0xffffff, 10 * scale, 1.4);
-    this.ring(x, y - 1, z, 26 * scale, 0.7, spec.explosion[2] ?? 0xffd23f);
-    this.ring(x, y - 0.8, z, 42 * scale, 1.1, spec.explosion[3] ?? 0xff8a1f);
+    this.ring(this.rings, x, y - 1, z, 26 * scale, 0.7, spec.explosion[2] ?? 0xffd23f);
+    this.ring(this.rings, x, y - 0.8, z, 42 * scale, 1.1, spec.explosion[3] ?? 0xff8a1f);
   }
 
   /** Damaged and wrecked tanks trail smoke; call each frame with a rate in particles/sec. */
@@ -267,6 +281,41 @@ export class Effects {
     s.alpha = 0.22 * intensity;
     this.colour.setHex(spec.terrain.grid).lerp(this.colourB.setHex(spec.smoke), 0.7);
     this.smoke.emit(s, this.colour);
+  }
+
+  /**
+   * Spray thrown up at the bow and ripples spreading from a tank wading
+   * through water whose surface is at `surfaceY`; call each frame.
+   */
+  wake(x: number, surfaceY: number, z: number, heading: number, speed: number, hull: { readonly x: number; readonly z: number }, dt: number): void {
+    const spec = this.spec;
+    if (!spec) return;
+    const pace = Math.min(1, Math.abs(speed) / 10);
+    // The hull's forward direction is (sin heading, -cos heading); the bow is whichever end leads.
+    const ahead = speed < 0 ? -1 : 1;
+    const fx = Math.sin(heading) * ahead;
+    const fz = -Math.cos(heading) * ahead;
+    if (this.rng.next() < dt * (8 + 36 * pace)) {
+      const side = this.rng.signed() * hull.x;
+      const s = this.spawn;
+      s.x = x + fx * hull.z * 0.9 - fz * side;
+      s.y = surfaceY + 0.1;
+      s.z = z + fz * hull.z * 0.9 + fx * side;
+      s.vx = fx * 2 * pace + this.rng.signed() * 1.5;
+      s.vy = this.rng.range(1.5, 3.5) * (0.4 + pace);
+      s.vz = fz * 2 * pace + this.rng.signed() * 1.5;
+      s.size = 0.3;
+      s.life = this.rng.range(0.35, 0.7);
+      s.gravity = 9;
+      s.drag = 1.5;
+      s.growth = 0;
+      s.alpha = 0.9;
+      this.colour.setHex(this.splash[Math.min(this.splash.length - 1, Math.floor(this.rng.next() * this.splash.length))] ?? 0xffffff).multiplyScalar(1.3);
+      this.sparks.emit(s, this.colour);
+    }
+    if (this.rng.next() < dt * (1.5 + 2.5 * pace)) {
+      this.ring(this.wakeRings, x, surfaceY + 0.05, z, hull.z * 2.2, 1.4, spec.water.shore, 0.55);
+    }
   }
 
   private burst(x: number, y: number, z: number, count: number, bvx: number, bvy: number, bvz: number, speed: number, life: number, palette: readonly number[], size: number, gravity: number): void {
@@ -337,13 +386,14 @@ export class Effects {
     slot.peak = intensity * 40;
   }
 
-  private ring(x: number, y: number, z: number, radius: number, life: number, colour: number): void {
-    const slot = this.rings.reduce((best, r) => (r.life < best.life ? r : best));
+  private ring(pool: RingSlot[], x: number, y: number, z: number, radius: number, life: number, colour: number, peak = 1): void {
+    const slot = pool.reduce((best, r) => (r.life < best.life ? r : best));
     slot.lines.position.set(x, y, z);
     slot.lines.visible = true;
     slot.life = life;
     slot.maxLife = life;
     slot.radius = radius;
+    slot.peak = peak;
     slot.material.color.setHex(colour).multiplyScalar(1.5);
   }
 
@@ -399,15 +449,8 @@ export class Effects {
       f.sprite.material.opacity = t;
       if (f.life <= 0) f.sprite.visible = false;
     }
-    for (const r of this.rings) {
-      if (r.life <= 0) continue;
-      r.life -= dt;
-      const t = Math.max(0, 1 - r.life / r.maxLife);
-      const radius = r.radius * (0.15 + 0.85 * Math.sqrt(t));
-      r.lines.scale.set(radius, 1, radius);
-      r.material.opacity = 1 - t;
-      if (r.life <= 0) r.lines.visible = false;
-    }
+    this.updateRings(this.rings, dt);
+    this.updateRings(this.wakeRings, dt);
     this.updateDebris(dt);
     for (let i = this.emitters.length - 1; i >= 0; i--) {
       const e = this.emitters[i]!;
@@ -417,6 +460,18 @@ export class Effects {
       }
       this.trailSmoke(e.x, e.y, e.z, 9, dt);
       if (this.rng.next() < dt * 6) this.burst(e.x, e.y - 0.4, e.z, 1, 0, 2.5, 0, 1.5, 0.6, this.spec?.explosion ?? [0xff8a1f], 0.35, -1);
+    }
+  }
+
+  private updateRings(pool: RingSlot[], dt: number): void {
+    for (const r of pool) {
+      if (r.life <= 0) continue;
+      r.life -= dt;
+      const t = Math.max(0, 1 - r.life / r.maxLife);
+      const radius = r.radius * (0.15 + 0.85 * Math.sqrt(t));
+      r.lines.scale.set(radius, 1, radius);
+      r.material.opacity = r.peak * (1 - t);
+      if (r.life <= 0) r.lines.visible = false;
     }
   }
 
@@ -484,7 +539,7 @@ export class Effects {
       f.life = 0;
       f.sprite.visible = false;
     }
-    for (const r of this.rings) {
+    for (const r of [...this.rings, ...this.wakeRings]) {
       r.life = 0;
       r.lines.visible = false;
     }
@@ -506,11 +561,11 @@ export class Effects {
       f.sprite.material.dispose();
       this.scene.remove(f.sprite);
     }
-    for (const r of this.rings) {
+    for (const r of [...this.rings, ...this.wakeRings]) {
       this.materials.release(r.material);
       this.scene.remove(r.lines);
     }
-    this.rings[0]?.lines.geometry.dispose();
+    this.ringGeometry.dispose();
     this.flashTexture.dispose();
     this.debrisGeometry.dispose();
     this.materials.release(this.debrisMaterial);

@@ -26,6 +26,8 @@ import { WaterView } from './WaterView';
 const SUN_OFFSET = new Vector3(-140, 220, 90);
 const SHADOW_EXTENT = 75;
 const DUST_SPEED = 3;
+/** Wading tanks slower than this leave no wake (m/s). */
+const WAKE_SPEED = 1;
 const SMOKE_HEALTH = 0.35;
 
 function createEnvironmentScene(spec: GraphicsModeSpec): { scene: Scene; dispose(): void } {
@@ -205,7 +207,12 @@ export class WorldView {
       }
       const distance = Math.hypot(tank.x - camera.x, tank.z - camera.z);
       view.sync(tank, alpha, dt, time, distance);
-      const wading = tank.bridgeId < 0 && this.world.water.depthAt(tank.x, tank.z) > 0;
+      // The water surface over the tank, or NaN on dry ground and on bridge decks.
+      const surface = tank.bridgeId < 0 ? this.world.water.surfaceAt(tank.x, tank.z) : Number.NaN;
+      const wading = !Number.isNaN(surface);
+      if (tank.alive && wading && Math.abs(tank.speed) > WAKE_SPEED && distance < 300) {
+        this.effects.wake(tank.x, surface, tank.z, tank.heading, tank.speed, tank.spec.hitHalfExtents, dt);
+      }
       if (tank.alive && !wading && Math.abs(tank.speed) > DUST_SPEED && distance < 300 && this.rng.next() < dt * Math.abs(tank.speed) * 1.2) {
         const back = tank.spec.hitHalfExtents.z * 0.9;
         const side = this.rng.chance(0.5) ? 1 : -1;
@@ -228,6 +235,7 @@ export class WorldView {
       this.tankKinds.delete(id);
     }
     this.projectiles.sync(sim.projectiles, alpha);
+    this.water.update(time);
     this.effects.update(dt);
     this.sky.follow(camera.x, camera.z);
 
