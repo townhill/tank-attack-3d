@@ -4,6 +4,7 @@
  * for the presentation layer. Contains no rendering code.
  */
 import { EnemyController } from '../ai/EnemyAI';
+import { NavPlanner } from '../ai/NavPlanner';
 import { computeDamage, hitZone, applyDamage } from '../combat/DamageSystem';
 import { createProjectileHit, fireWeapon, stepProjectile } from '../combat/WeaponSystem';
 import type { Difficulty, DifficultySpec, EnemyKind, MapSize } from '../config/settings';
@@ -79,6 +80,8 @@ export class Simulation {
   readonly enemies: EnemyEntry[] = [];
   readonly projectiles = new ProjectilePool(PROJECTILE.poolSize);
   readonly waves: WaveManager;
+  /** Route planning shared by every enemy. */
+  readonly navigation: NavPlanner;
   readonly stats: GameStats = createStats();
   readonly events: GameEvent[] = [];
   time = 0;
@@ -97,6 +100,7 @@ export class Simulation {
     this.difficultySpec = DIFFICULTY[options.difficulty];
     this.rng = new Random(options.seed ^ hashSeed(options.difficulty));
     this.waves = new WaveManager(this.difficultySpec, this.rng, options.firstWaveDelay ?? 3);
+    this.navigation = new NavPlanner(this.world);
     this.player = new Tank(0, TANK_SPECS.player, 'player');
     this.player.placeAt(0, 0, 0, this.world);
     this.tanks.push(this.player);
@@ -168,6 +172,7 @@ export class Simulation {
 
   private updateAI(dt: number): void {
     const scale = aimErrorScale(Math.max(1, this.waves.wave));
+    this.navigation.beginTick(this.tanks);
     for (const entry of this.enemies) {
       entry.controller.update({
         world: this.world,
@@ -179,6 +184,7 @@ export class Simulation {
         dt,
         think: (this.tick + entry.tank.id) % AI_THINK_INTERVAL === 0,
         time: this.time,
+        navigation: this.navigation,
       });
     }
   }

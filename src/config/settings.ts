@@ -337,6 +337,28 @@ export const AI = {
   separationRadius: 14,
 } as const;
 
+export const NAV = {
+  /** Path searches started per simulation tick across all enemies. */
+  plansPerTick: 2,
+  /** Grid cells one search may expand before settling for a partial route. */
+  searchBudget: 8000,
+  /** Re-plan when the goal has moved this far since the route was planned (metres)... */
+  replanGoalShift: 25,
+  /** ...or when a route to a goal that has moved at all is this old (seconds)... */
+  replanInterval: 3,
+  /** ...or when the tank has strayed this far from its route (metres). */
+  strayDistance: 20,
+  /** Distance at which a waypoint counts as reached; bridge waypoints use the tighter one (metres). */
+  waypointRadius: 8,
+  bridgeWaypointRadius: 4,
+  /** Tanks keep this far right of a bridge's centreline on the deck... */
+  laneOffset: 2.5,
+  /** ...and further right on the approaches, so a tank waiting there leaves room for traffic coming off (metres). */
+  approachLaneOffset: 6,
+  /** Largest extra cost one enemy's own preference adds to a bridge, so the pack spreads over several (metres). */
+  bridgePreference: 60,
+} as const;
+
 export const PROJECTILE = {
   maxLifetime: 4.5,
   poolSize: 96,

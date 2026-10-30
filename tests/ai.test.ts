@@ -3,6 +3,7 @@ import { AI, DIFFICULTY, TANK_SPECS } from '../src/config/settings';
 import type { DifficultySpec, EnemyKind } from '../src/config/settings';
 import type { AIContext } from '../src/ai/EnemyAI';
 import { EnemyController } from '../src/ai/EnemyAI';
+import { NavPlanner } from '../src/ai/NavPlanner';
 import type { SteeringOutput } from '../src/ai/Navigation';
 import { faceTowards, reverseAwayFrom, steerTowards } from '../src/ai/Navigation';
 import type { AIState, TransitionInput } from '../src/ai/StateMachine';
@@ -519,6 +520,7 @@ interface Harness {
   rng: Random;
   extraTanks: Tank[];
   time: number;
+  navigation: NavPlanner;
 }
 
 interface HarnessOptions {
@@ -542,7 +544,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
   const enemy = placeTank(world, kind, 1, ex, ez, options.enemyHeading ?? 0);
   const difficulty = options.difficulty ?? TEST_DIFFICULTY;
   const controller = new EnemyController(enemy, kind, new Random(11), difficulty, world.playableHalfSize);
-  return { world, player, enemy, controller, difficulty, rng: options.ctxRng ?? new Random(12), extraTanks: [], time: 0 };
+  return { world, player, enemy, controller, difficulty, rng: options.ctxRng ?? new Random(12), extraTanks: [], time: 0, navigation: new NavPlanner(world) };
 }
 
 interface TickOptions {
@@ -564,7 +566,9 @@ function tick(h: Harness, options: TickOptions = {}): void {
     dt: DT,
     think: options.think ?? true,
     time: h.time,
+    navigation: h.navigation,
   };
+  h.navigation.beginTick(ctx.tanks);
   h.controller.update(ctx);
   if (options.move) {
     h.enemy.integrateMotion(DT, h.world.terrain, h.difficulty.enemySpeedMultiplier);

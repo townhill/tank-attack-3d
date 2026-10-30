@@ -40,19 +40,20 @@ export function makeStraightRiver(x0: number, z0: number, x1: number, z1: number
 export const RIVER_WORLD_PLAYABLE = 250;
 
 /**
- * Flat ground with a 28 m wide river flowing north to south through x = 0
- * and one bridge carrying an east-west road across it at z = 0.
+ * Flat ground with a 28 m wide river flowing north to south through x = 0,
+ * crossed by an east-west bridge at each of `bridgeZs` (one at z = 0 by default).
  */
-export function makeRiverWorld(): World {
+export function makeRiverWorld(bridgeZs: readonly number[] = [0]): World {
   const terrain = new Terrain(300, 5);
   const river = makeStraightRiver(0, -300, 0, 300);
   const level = carveWater(terrain, [river], [], RIVER_WORLD_PLAYABLE);
-  const middle = (river.samples.length - 1) / 2;
-  const crossing = planCrossing(terrain, level, river, middle, RIVER_WORLD_PLAYABLE);
-  if (!crossing) throw new Error('makeRiverWorld: no crossing at the middle of the river');
-  const bridge = buildBridge(terrain, level, crossing, 0);
-  const water = createWaterMap(terrain, level, [bridge], RIVER_WORLD_PLAYABLE + 40);
-  return new World(1, terrain, [], RIVER_WORLD_PLAYABLE, { water, rivers: [river], lakes: [], bridges: [bridge] });
+  const bridges = bridgeZs.map((z, id) => {
+    const crossing = planCrossing(terrain, level, river, Math.round((z + 300) / 4), RIVER_WORLD_PLAYABLE);
+    if (!crossing) throw new Error(`makeRiverWorld: no crossing at z = ${z}`);
+    return buildBridge(terrain, level, crossing, id);
+  });
+  const water = createWaterMap(terrain, level, bridges, RIVER_WORLD_PLAYABLE + 40);
+  return new World(1, terrain, [], RIVER_WORLD_PLAYABLE, { water, rivers: [river], lakes: [], bridges });
 }
 
 export interface Trough {

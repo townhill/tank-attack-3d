@@ -30,8 +30,6 @@ export interface WorldFeatures {
   readonly rivers: readonly River[];
   readonly lakes: readonly Lake[];
   readonly bridges: readonly Bridge[];
-  /** Walkable regions, when already built for these features; otherwise built on first use. */
-  readonly nav?: NavGrid;
 }
 
 export function dryFeatures(terrain: Terrain): WorldFeatures {
@@ -66,12 +64,11 @@ export class World implements HeightField {
     this.lakes = features.lakes;
     this.bridges = features.bridges;
     this.bridgeRadii = features.bridges.map(bridgeBoundRadius);
-    this.navGrid = features.nav ?? null;
   }
 
-  /** Walkable regions of the battlefield, built on first use. */
+  /** Navigation grid of the battlefield (water, bridges, obstacles and slopes), built on first use. */
   get nav(): NavGrid {
-    this.navGrid ??= new NavGrid(this.playableHalfSize, this.water, this.bridges);
+    this.navGrid ??= new NavGrid(this.playableHalfSize, this.water, this.bridges, { terrain: this.terrain, obstacles: this.obstacles });
     return this.navGrid;
   }
 

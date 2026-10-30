@@ -268,7 +268,7 @@ export function generateWaterFeatures(seed: number, terrain: Terrain, opts: Worl
     const bridges = placeBridges(terrain, level, rivers, half);
     const water = createWaterMap(terrain, level, bridges, half + WATER_FIELD_MARGIN);
     const nav = new NavGrid(half, water, bridges);
-    if (nav.regionShare(nav.regionAt(0, 0)) >= MIN_REACHABLE_SHARE) return { water, rivers, lakes, bridges, nav };
+    if (nav.regionShare(nav.regionAt(0, 0)) >= MIN_REACHABLE_SHARE) return { water, rivers, lakes, bridges };
     terrain.heights.set(original);
   }
   return dryFeatures(terrain);
