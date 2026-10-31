@@ -13,7 +13,9 @@ import type { Random } from '../utils/random';
 import type { World } from '../world/World';
 import { BridgeView } from './BridgeView';
 import { Effects } from './Effects';
+import { FordView } from './fordMarkers';
 import type { GraphicsModeSpec } from './GraphicsModes';
+import { LakeReflection } from './LakeReflection';
 import { MaterialLibrary } from './Materials';
 import { ObstacleView } from './ObstacleView';
 import { ProjectileView } from './ProjectileView';
@@ -21,6 +23,7 @@ import type { Renderer } from './Renderer';
 import { Sky } from './Sky';
 import { TankView } from './TankView';
 import { TerrainView } from './TerrainView';
+import { reflectsLakes } from './waterDetail';
 import { WaterView } from './WaterView';
 
 const SUN_OFFSET = new Vector3(-140, 220, 90);
@@ -64,6 +67,7 @@ export class WorldView {
   private terrain: TerrainView;
   private water: WaterView;
   private bridges: BridgeView;
+  private fords: FordView;
   private obstacles: ObstacleView;
   private sky: Sky;
   private world: World;
@@ -77,6 +81,9 @@ export class WorldView {
   private spec: GraphicsModeSpec | null = null;
   private shadowsAllowed = true;
   private quality: QualityLevel = 'high';
+  private readonly reflection: LakeReflection;
+  /** False once automatic quality reduction has turned lake reflections off. */
+  private reflectionsAllowed = true;
   private readonly seen = new Set<number>();
 
   constructor(
@@ -101,14 +108,19 @@ export class WorldView {
     this.scene.add(this.hemi, this.sun, this.sun.target);
 
     this.world = world;
+    this.reflection = new LakeReflection(world.lakes);
     this.terrain = new TerrainView(world, this.materials);
-    this.water = new WaterView(world, this.materials);
+    this.water = new WaterView(world, this.materials, this.reflection.uniforms);
     this.bridges = new BridgeView(world, this.materials);
+    this.fords = new FordView(world, this.materials);
     this.obstacles = new ObstacleView(world, this.materials);
     this.sky = new Sky(world.seed, this.materials);
-    this.scene.add(this.terrain.group, this.water.group, this.bridges.group, this.obstacles.group, this.sky.group);
+    this.scene.add(this.terrain.group, this.water.group, this.bridges.group, this.fords.group, this.obstacles.group, this.sky.group);
     this.projectiles = new ProjectileView(this.scene, projectileCapacity, this.materials);
     this.effects = new Effects(this.scene, this.materials, rng);
+    renderer.setPrePass((r) => {
+      this.reflection.render(r, this.scene, renderer.camera, this.water.group);
+    });
   }
 
   /** Rebuilds static scenery for a new battlefield and drops all tank views. */
@@ -116,15 +128,18 @@ export class WorldView {
     this.terrain.dispose();
     this.water.dispose();
     this.bridges.dispose();
+    this.fords.dispose();
     this.obstacles.dispose();
     this.sky.dispose();
     this.world = world;
+    this.reflection.setLakes(world.lakes);
     this.terrain = new TerrainView(world, this.materials);
-    this.water = new WaterView(world, this.materials);
+    this.water = new WaterView(world, this.materials, this.reflection.uniforms);
     this.bridges = new BridgeView(world, this.materials);
+    this.fords = new FordView(world, this.materials);
     this.obstacles = new ObstacleView(world, this.materials);
     this.sky = new Sky(world.seed, this.materials);
-    this.scene.add(this.terrain.group, this.water.group, this.bridges.group, this.obstacles.group, this.sky.group);
+    this.scene.add(this.terrain.group, this.water.group, this.bridges.group, this.fords.group, this.obstacles.group, this.sky.group);
     this.clearTanks();
     this.effects.clear();
     if (this.spec) this.applyModeToScenery(this.spec);
@@ -163,9 +178,34 @@ export class WorldView {
   private applyModeToScenery(spec: GraphicsModeSpec): void {
     this.terrain.applyMode(spec, true);
     this.water.applyMode(spec);
-    this.water.setQuality(this.quality);
+    this.applyReflections(spec);
     this.obstacles.applyMode(spec);
     this.sky.applyMode(spec);
+  }
+
+  /** Mirrors lakes when the quality, the mode and automatic quality reduction all allow it. */
+  private applyReflections(spec: GraphicsModeSpec): void {
+    const reflect = reflectsLakes(this.quality, spec.water.reflection, this.reflectionsAllowed);
+    this.reflection.enabled = reflect;
+    this.reflection.uniforms.uReflectStrength.value = spec.water.reflection;
+    this.water.setQuality(this.quality, reflect);
+  }
+
+  /** Lets lake reflections be drawn, or turns them off whatever the quality. */
+  setReflectionsAllowed(allowed: boolean): void {
+    if (allowed === this.reflectionsAllowed) return;
+    this.reflectionsAllowed = allowed;
+    if (this.spec) this.applyReflections(this.spec);
+  }
+
+  /** True while lakes are mirrored (whether or not one is in view). */
+  get reflectingLakes(): boolean {
+    return this.reflection.enabled;
+  }
+
+  /** Index of the lake mirrored in the latest frame, or -1. */
+  get reflectedLake(): number {
+    return this.reflection.lake;
   }
 
   setShadowMapSize(size: number): void {
@@ -266,10 +306,13 @@ export class WorldView {
     this.terrain.dispose();
     this.water.dispose();
     this.bridges.dispose();
+    this.fords.dispose();
     this.obstacles.dispose();
     this.sky.dispose();
     this.projectiles.dispose();
     this.effects.dispose();
+    this.renderer.setPrePass(null);
+    this.reflection.dispose();
     this.envTexture?.dispose();
     this.materials.dispose();
   }

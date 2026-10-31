@@ -3,16 +3,18 @@
  * tank can stand clear of blocked water (and of obstacles, when given) are
  * walkable, at a travel cost raised on steep ground and in shallow water.
  * Walkable cells form banks, which rivers keep apart, and regions, in which
- * bridges join banks; each bridge is a portal between the ground beyond its
- * two ends.
+ * crossings join banks. Each bridge and each ford is a portal between the
+ * ground beyond its two ends; the shallows of a ford are left out of the
+ * banks, so the river still parts them there and routes cross it on purpose.
  */
 import type { Bridge } from './Bridge';
 import { circleVsObstacle, createPushResult } from './Collision';
 import type { PlanarVector } from './distanceField';
+import { FORD_TAPER } from './FordPlacer';
 import type { Obstacle } from './Obstacle';
 import { toWorldX, toWorldZ } from './Obstacle';
 import type { Terrain } from './Terrain';
-import type { WaterMap } from './Water';
+import type { Ford, WaterMap } from './Water';
 
 /** Grid cell size (metres). */
 export const NAV_CELL_SIZE = 10;
@@ -27,6 +29,8 @@ const STEEP_COST = 6;
 const WADING_COST = 3;
 /** How far beyond each deck end a bridge joins the ground (metres). */
 export const BRIDGE_LINK_OFFSET = 6;
+/** How far beyond the river's edge on each bank a ford joins the ground (metres). */
+export const FORD_LINK_OFFSET = 8;
 /** Cells searched on each side when a point falls on an unwalkable cell: enough to reach land from mid-span on the longest bridge. */
 const SNAP_CELLS = 5;
 /** Spacing of the samples along a straight line checked for water, and along a goal projected onto a bank (metres). */
@@ -38,9 +42,9 @@ export interface NavSurroundings {
   readonly obstacles: readonly Obstacle[];
 }
 
-/** Where a bridge meets the ground beyond one of its ends. */
+/** Where a crossing meets the ground beyond one of its ends. */
 export interface PortalEnd {
-  /** Sign of `along` at this end of the deck. */
+  /** Sign of `along` at this end of a bridge deck, or of the offset across the river at this bank of a ford. */
   readonly sign: number;
   /** World position of the link point on the approach. */
   readonly x: number;
@@ -50,9 +54,15 @@ export interface PortalEnd {
   readonly side: number;
 }
 
-export interface BridgePortal {
+/** A river crossing: a bridge or a ford. */
+export interface Portal {
+  /** Bridge crossed, or -1 at a ford. */
   readonly bridgeId: number;
-  /** The ends at positive and at negative `along`. */
+  /** Ford waded, or -1 on a bridge. */
+  readonly fordId: number;
+  /** Distance between the two ends (metres). */
+  readonly length: number;
+  /** The ends with `sign` +1 and -1. */
   readonly ends: readonly [PortalEnd, PortalEnd];
 }
 
@@ -71,7 +81,8 @@ export class NavGrid {
   readonly side: Int32Array;
   /** Region id per cell (banks joined by bridges), or -1 where unwalkable. */
   readonly region: Int32Array;
-  readonly portals: readonly BridgePortal[];
+  readonly portals: readonly Portal[];
+  private readonly fords: readonly Ford[];
   private readonly regionSizes = new Map<number, number>();
   private readonly openCount: number;
 
@@ -81,15 +92,19 @@ export class NavGrid {
     bridges: readonly Bridge[],
     surroundings: NavSurroundings | null = null,
     readonly cellSize: number = NAV_CELL_SIZE,
+    fords: readonly Ford[] = [],
   ) {
     const cols = Math.ceil((2 * playableHalfSize) / cellSize);
     this.cols = cols;
     this.minX = -playableHalfSize;
+    this.fords = fords;
     this.walkable = new Uint8Array(cols * cols);
     this.cost = new Float32Array(cols * cols);
     for (let j = 0; j < cols; j++) {
       for (let i = 0; i < cols; i++) {
-        if (water.blockedDistance(this.centre(i), this.centre(j)) > WALK_CLEARANCE) this.walkable[j * cols + i] = 1;
+        const x = this.centre(i);
+        const z = this.centre(j);
+        if (water.blockedDistance(x, z) > WALK_CLEARANCE && this.fordAt(x, z) < 0) this.walkable[j * cols + i] = 1;
       }
     }
     this.open = this.walkable.slice();
@@ -136,13 +151,20 @@ export class NavGrid {
     this.side = new Int32Array(cols * cols);
     for (let k = 0; k < parent.length; k++) this.side[k] = this.open[k] === 1 ? find(k) : -1;
 
-    const portals: BridgePortal[] = [];
+    const portals: Portal[] = [];
     bridges.forEach((b, bridgeId) => {
       const plus = this.portalEnd(b, 1);
       const minus = this.portalEnd(b, -1);
       if (!plus || !minus) return;
       union(plus.cell, minus.cell);
-      portals.push({ bridgeId, ends: [plus, minus] });
+      portals.push({ bridgeId, fordId: -1, length: 2 * b.halfLength, ends: [plus, minus] });
+    });
+    fords.forEach((f, fordId) => {
+      const plus = this.fordEnd(f, 1);
+      const minus = this.fordEnd(f, -1);
+      if (!plus || !minus) return;
+      union(plus.cell, minus.cell);
+      portals.push({ bridgeId: -1, fordId, length: 2 * (f.halfWidth + FORD_LINK_OFFSET), ends: [plus, minus] });
     });
     this.portals = portals;
 
@@ -156,6 +178,22 @@ export class NavGrid {
       this.region[k] = root;
       this.regionSizes.set(root, (this.regionSizes.get(root) ?? 0) + 1);
     }
+  }
+
+  /**
+   * Ford whose shallows (x, z) lies in, or -1: within the river's width of
+   * its centreline, along the shallow stretch and the slope beyond each end.
+   */
+  fordAt(x: number, z: number): number {
+    for (let k = 0; k < this.fords.length; k++) {
+      const f = this.fords[k]!;
+      const dx = x - f.x;
+      const dz = z - f.z;
+      const along = dx * f.tx + dz * f.tz;
+      const across = dz * f.tx - dx * f.tz;
+      if (Math.abs(across) <= f.halfWidth && Math.abs(along) <= f.halfLength + FORD_TAPER + this.cellSize) return k;
+    }
+    return -1;
   }
 
   /** Fraction of all ground clear of water that belongs to `region`. */
@@ -284,6 +322,15 @@ export class NavGrid {
         }
       }
     }
+  }
+
+  /** The bank of ford `f` on the `sign` side of the river, across its middle. */
+  private fordEnd(f: Ford, sign: number): PortalEnd | null {
+    const reach = sign * (f.halfWidth + FORD_LINK_OFFSET);
+    const x = f.x - f.tz * reach;
+    const z = f.z + f.tx * reach;
+    const cell = this.nearestWalkableCell(x, z);
+    return cell >= 0 ? { sign, x, z, cell, side: this.side[cell]! } : null;
   }
 
   private portalEnd(b: Bridge, sign: number): PortalEnd | null {

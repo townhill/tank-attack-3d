@@ -1,6 +1,7 @@
 /**
  * WebGL renderer and post-processing chain:
- *   RenderPass (MSAA target) -> [phosphor persistence] -> bloom -> [CRT] -> output.
+ *   [pre-pass, such as a lake reflection] -> RenderPass (MSAA target) ->
+ *   [phosphor persistence] -> bloom -> [CRT] -> output.
  * Quality presets trade resolution, MSAA, bloom and shadows for speed.
  */
 import { HalfFloatType, NoToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector2, WebGLRenderer, WebGLRenderTarget } from 'three';
@@ -84,6 +85,7 @@ export class Renderer {
   private afterimage: AfterimagePass | null = null;
   private crt: ShaderPass | null = null;
   private config: RenderConfig | null = null;
+  private prePass: ((renderer: WebGLRenderer) => void) | null = null;
   private width = 1;
   private height = 1;
   private time = 0;
@@ -182,10 +184,19 @@ export class Renderer {
     (this.crt.uniforms.uResolution!.value as Vector2).set(this.width * pr, this.height * pr);
   }
 
+  /**
+   * Sets a pass rendered every frame ahead of the scene, such as a reflection
+   * into a texture; its draw calls count in the frame's statistics.
+   */
+  setPrePass(pass: ((renderer: WebGLRenderer) => void) | null): void {
+    this.prePass = pass;
+  }
+
   render(dt: number): void {
     this.time += dt;
     // Several passes render per frame, so statistics are reset once per frame.
     this.renderer.info.reset();
+    this.prePass?.(this.renderer);
     if (this.crt) this.crt.uniforms.uTime!.value = this.time;
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);

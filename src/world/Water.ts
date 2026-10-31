@@ -53,6 +53,26 @@ export interface Lake {
   readonly shape: readonly number[];
 }
 
+/** A shallow stretch of river bed where tanks can wade across. */
+export interface Ford {
+  readonly id: number;
+  readonly riverId: number;
+  /** Middle of the ford, on the river's centreline. */
+  readonly x: number;
+  readonly z: number;
+  /** Distance along the river from its source (metres). */
+  readonly s: number;
+  /** Unit direction of flow through the ford. */
+  readonly tx: number;
+  readonly tz: number;
+  /** Half the width of the river at the ford. */
+  readonly halfWidth: number;
+  /** Half the length along the river of the shallow stretch. */
+  readonly halfLength: number;
+  /** Water depth over the middle of the ford. */
+  readonly depth: number;
+}
+
 /** Shoreline radius of a lake in the direction `angle` (radians from +X towards +Z). */
 export function lakeRadiusAt(lake: Lake, angle: number): number {
   const n = lake.shape.length;

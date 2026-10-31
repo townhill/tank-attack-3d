@@ -7,6 +7,10 @@ export default defineConfig({
     sourcemap: false,
     chunkSizeWarningLimit: 1200,
   },
+  // The world generation worker is a module worker, like the page itself.
+  worker: {
+    format: 'es',
+  },
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
@@ -25,6 +29,7 @@ export default defineConfig({
         'src/rendering/CameraState.ts',
         'src/rendering/bridgeDetail.ts',
         'src/rendering/waterDetail.ts',
+        'src/rendering/lakeMirror.ts',
         'src/config/**',
       ],
       // DOM/WebGL orchestration is verified by browser smoke tests instead of unit tests.

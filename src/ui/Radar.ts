@@ -15,6 +15,7 @@ import { bearingOf, clampToRadius, formatDistance, rotateToView, sweepLag, viewA
 import type { GraphicsModeId, TacticalTheme } from './tacticalTheme';
 import {
   drawBridgeSymbol,
+  drawFordSymbol,
   drawChevron,
   drawUnitSymbol,
   drawWreck,
@@ -25,7 +26,7 @@ import {
   traceRotatedRect,
   unitColor,
 } from './tacticalTheme';
-import { ShorelineIndex } from './tacticalWater';
+import { FORD_BANK_REACH, fordSignAngle, ShorelineIndex } from './tacticalWater';
 import './tactical.css';
 
 export type RadarOrientation = 'heading-up' | 'north-up';
@@ -184,7 +185,7 @@ export class Radar {
     this.canvas.remove();
   }
 
-  /** Shorelines and bridges within range. */
+  /** Shorelines, bridges and fords within range. */
   private drawWater(sim: Simulation, up: number, k: number): void {
     const world = sim.world;
     if (this.shoresWorld !== world) {
@@ -219,6 +220,19 @@ export class Radar {
         Math.max(MIN_BRIDGE_HALF_LENGTH_PX, bridge.halfLength * k),
         Math.max(MIN_BRIDGE_HALF_WIDTH_PX, (bridge.halfWidth + PARAPET_THICKNESS) * k),
         viewAngle(bridge.yaw, up),
+      );
+    }
+    for (const ford of world.fords) {
+      const dx = ford.x - p.x;
+      const dz = ford.z - p.z;
+      const reach = this.range + ford.halfWidth;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      const q = this.toScope(dx, dz, up, k);
+      drawFordSymbol(
+        ctx, this.theme, q.x, q.y,
+        Math.max(MIN_BRIDGE_HALF_LENGTH_PX, (ford.halfWidth + FORD_BANK_REACH) * k),
+        Math.max(MIN_BRIDGE_HALF_WIDTH_PX, ford.halfLength * k),
+        viewAngle(fordSignAngle(ford), up),
       );
     }
   }

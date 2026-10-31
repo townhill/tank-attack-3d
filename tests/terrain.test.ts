@@ -423,6 +423,7 @@ describe('generateWorld', () => {
       rivers: 0,
       lakes: 0,
       ponds: 0,
+      fords: false,
     });
     expect(world.terrain.halfSize).toBe(200);
     expect(world.playableHalfSize).toBe(150);

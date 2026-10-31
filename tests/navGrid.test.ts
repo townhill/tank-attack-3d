@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NavGrid } from '../src/world/NavGrid';
 import { Terrain } from '../src/world/Terrain';
 import { createWaterMap, WaterMap } from '../src/world/Water';
-import { makeBridge, makeRiverWorld, makeTrough, RIVER_WORLD_PLAYABLE } from './waterFixtures';
+import { makeBridge, makeFordWorld, makeRiverWorld, makeTrough, RIVER_WORLD_PLAYABLE } from './waterFixtures';
 
 // A 19 m wide impassable river running north-south through x = 0.
 const river = makeTrough(300, 0.4, 6);
@@ -111,5 +111,46 @@ describe('NavGrid banks, portals and costs', () => {
   it('tells whether a straight drive stays clear of deep water', () => {
     expect(nav.isWaterClear(-100, -200, -100, 200, 5)).toBe(true);
     expect(nav.isWaterClear(-100, 30, 100, 30, 5)).toBe(false);
+  });
+});
+
+describe('NavGrid fords', () => {
+  // The river world with a bridge at z = 100 and a ford further south.
+  const world = makeFordWorld();
+  const ford = world.fords[0]!;
+  const nav = world.nav;
+
+  it('keeps the banks apart at a ford, as a bridge does, but joins them in one region', () => {
+    expect(ford.z).toBeLessThan(0);
+    const west = nav.sideAt(-60, ford.z);
+    const east = nav.sideAt(60, ford.z);
+    expect(west).toBeGreaterThanOrEqual(0);
+    expect(east).toBeGreaterThanOrEqual(0);
+    expect(west).not.toBe(east);
+    expect(nav.regionAt(-60, ford.z)).toBe(nav.regionAt(60, ford.z));
+  });
+
+  it('links the banks across the ford with a crossing whose ends stand on either bank', () => {
+    expect(nav.portals).toHaveLength(2);
+    const portal = nav.portals.find((p) => p.fordId === 0)!;
+    expect(portal.bridgeId).toBe(-1);
+    const [a, b] = portal.ends;
+    expect(a.side).not.toBe(b.side);
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeCloseTo(portal.length);
+    expect(portal.length).toBeGreaterThan(2 * ford.halfWidth);
+    for (const end of portal.ends) expect(Math.abs(end.z - ford.z)).toBeLessThan(1);
+    expect(nav.portals.find((p) => p.bridgeId === 0)!.fordId).toBe(-1);
+  });
+
+  it('leaves the shallow water of the ford off the walkable ground', () => {
+    expect(nav.isWalkable(ford.x, ford.z)).toBe(false);
+    expect(nav.isWalkable(-60, ford.z)).toBe(true);
+  });
+
+  it('knows which ford a point stands in', () => {
+    expect(nav.fordAt(ford.x, ford.z)).toBe(0);
+    expect(nav.fordAt(ford.x + ford.halfWidth - 1, ford.z + ford.halfLength)).toBe(0);
+    expect(nav.fordAt(-60, ford.z)).toBe(-1);
+    expect(nav.fordAt(ford.x, ford.z + 120)).toBe(-1);
   });
 });

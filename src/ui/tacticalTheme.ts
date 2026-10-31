@@ -464,6 +464,40 @@ export function drawBridgeSymbol(
   ctx.stroke();
 }
 
+/** Dashes of the lines that mark a ford (px). */
+const FORD_DASH: number[] = [3, 2];
+
+/**
+ * The map sign for a ford: two dashed lines across the river where the
+ * shallow track runs, centred on (x, y), reaching `halfAcross` to either
+ * bank and `halfAlong` up and down stream, the crossing turned `angle`
+ * radians clockwise from up (as for the bridge sign).
+ */
+export function drawFordSymbol(
+  ctx: CanvasRenderingContext2D,
+  theme: TacticalTheme,
+  x: number,
+  y: number,
+  halfAcross: number,
+  halfAlong: number,
+  angle: number,
+): void {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  ctx.beginPath();
+  for (const side of KERB_SIDES) {
+    const ox = x + side * halfAlong * c;
+    const oy = y + side * halfAlong * s;
+    ctx.moveTo(ox + halfAcross * s, oy - halfAcross * c);
+    ctx.lineTo(ox - halfAcross * s, oy + halfAcross * c);
+  }
+  ctx.strokeStyle = theme.bridge;
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash(FORD_DASH);
+  ctx.stroke();
+  ctx.setLineDash(NO_DASH);
+}
+
 /** Fills and strokes the current path; `solid` > 0 adds an extra opaque fill in the stroke colour. */
 function paintFootprint(ctx: CanvasRenderingContext2D, fill: string, stroke: string, solid: number): void {
   const alpha = ctx.globalAlpha;
@@ -495,6 +529,7 @@ export type LegendItem =
   | 'rock'
   | 'water'
   | 'bridge'
+  | 'ford'
   | 'boundary';
 
 export const LEGEND_LABELS: Readonly<Record<LegendItem, string>> = {
@@ -511,6 +546,7 @@ export const LEGEND_LABELS: Readonly<Record<LegendItem, string>> = {
   rock: 'ROCK',
   water: 'WATER',
   bridge: 'BRIDGE',
+  ford: 'FORD',
   boundary: 'BOUNDARY',
 };
 
@@ -585,6 +621,9 @@ export function drawLegendSymbol(ctx: CanvasRenderingContext2D, theme: TacticalT
     }
     case 'bridge':
       drawBridgeSymbol(ctx, theme, x, y, 8, 3, Math.PI / 2);
+      break;
+    case 'ford':
+      drawFordSymbol(ctx, theme, x, y, 8, 3, Math.PI / 2);
       break;
     case 'boundary':
       ctx.strokeStyle = theme.boundary;

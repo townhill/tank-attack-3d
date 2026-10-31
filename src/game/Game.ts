@@ -8,7 +8,7 @@ import { AudioManager } from '../audio/AudioManager';
 import type { MapSize } from '../config/settings';
 import { DIFFICULTY, PROJECTILE, SIM_DT, TANK_SPECS } from '../config/settings';
 import type { UserSettings } from '../config/userSettings';
-import { browserStorage, GRAPHICS_MODES, QUALITY_LEVELS, SettingsStore } from '../config/userSettings';
+import { browserStorage, GRAPHICS_MODES, SettingsStore } from '../config/userSettings';
 import type { Tank } from '../entities/Tank';
 import { InputManager } from '../input/InputManager';
 import { CameraManager } from '../rendering/CameraManager';
@@ -23,13 +23,16 @@ import { PerfOverlay } from '../ui/PerfOverlay';
 import { Radar } from '../ui/Radar';
 import { TacticalMap } from '../ui/TacticalMap';
 import { Random } from '../utils/random';
-import type { Bridge } from '../world/Bridge';
-import { toWorldX, toWorldZ } from '../world/Obstacle';
+import type { World } from '../world/World';
+import { WorldLoader } from '../world/WorldLoader';
 import { AimSolver } from './Aiming';
 import type { GameEvent } from './events';
 import { FixedStepAccumulator } from './GameLoop';
 import { HudPresenter } from './HudPresenter';
 import { PlayerController } from './PlayerController';
+import { AutoQuality } from './AutoQuality';
+import type { Placement } from './debugPlacement';
+import { bridgeApproach, fordApproach } from './debugPlacement';
 import { accuracy, BestScoreStore, formatTime } from './Scoring';
 import { Simulation } from './Simulation';
 
@@ -37,8 +40,6 @@ export type AppState = 'menu' | 'playing' | 'paused' | 'gameover';
 
 const RADAR_RANGE = 400;
 const ATTRACT_SPIN = 0.07;
-const SLOW_FPS = 40;
-const SLOW_SECONDS = 4;
 const MAP_PAN_SPEED = 260;
 const VISIBILITY_RANGE = 900;
 const MAX_FRAME_TIME = 0.1;
@@ -75,6 +76,8 @@ export class Game {
   private seed: number;
   /** Map size the current world was generated at (settings may since have changed). */
   private mapSize: MapSize;
+  /** Whether the current world was generated with fords (settings may since have changed). */
+  private worldFords: boolean;
   private readonly worldView: WorldView;
   private readonly cameraState = new CameraState('third');
   private readonly aim = new AimState();
@@ -89,7 +92,10 @@ export class Game {
   private lockFailedAt = Number.NEGATIVE_INFINITY;
   private lastTime = 0;
   private time = 0;
-  private slowTime = 0;
+  private readonly autoQuality = new AutoQuality();
+  private readonly worldLoader = new WorldLoader();
+  /** Counts battlefield requests, so only the latest one starts a game when it arrives. */
+  private worldRequest = 0;
   private width = 1;
   private height = 1;
   private readonly gunDirection = new Vector3();
@@ -117,6 +123,7 @@ export class Game {
     this.input = new InputManager(this.canvas);
     this.seed = seedFromUrl() ?? randomSeed();
     this.mapSize = this.settings.mapSize;
+    this.worldFords = this.settings.fords;
     this.sim = this.createAttractSimulation();
     this.worldView = new WorldView(this.renderer, this.sim.world, PROJECTILE.poolSize, this.rng);
     this.cameraManager = new CameraManager(this.renderer.camera, this.sim.world, this.rng);
@@ -164,8 +171,16 @@ export class Game {
 
   // ---------------------------------------------------------------- setup
 
-  private createAttractSimulation(): Simulation {
-    return new Simulation({ seed: this.seed, difficulty: this.settings.difficulty, mapSize: this.mapSize, firstWaveDelay: Number.POSITIVE_INFINITY });
+  /** The menu's background battle, on `world` when given, else on the battlefield it generates. */
+  private createAttractSimulation(world?: World): Simulation {
+    const { seed, mapSize, worldFords: fords } = this;
+    return new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, fords, world, firstWaveDelay: Number.POSITIVE_INFINITY });
+  }
+
+  /** Drops any battlefield still being generated, so its arrival starts nothing. */
+  private cancelWorldLoad(): void {
+    this.worldRequest++;
+    this.menu.setStatus(null);
   }
 
   private bindEvents(): void {
@@ -226,6 +241,8 @@ export class Game {
     const preset = QUALITY_PRESETS[next.quality];
     this.renderer.configure({ quality: next.quality, mode: spec, bloomMultiplier: next.bloomStrength, scanlines: next.scanlines, flicker: next.flicker });
     this.worldView.setShadowMapSize(preset.shadowMapSize);
+    // A new quality level brings back reflections auto-quality turned off.
+    if (previous.quality !== next.quality) this.worldView.setReflectionsAllowed(true);
     this.worldView.applyMode(spec, next, preset.shadows);
     this.hud.setTheme(spec.hudTheme);
     this.radar.setTheme(next.graphicsMode);
@@ -239,7 +256,7 @@ export class Game {
     this.perf.setVisible(next.showPerf);
     document.body.dataset.mode = next.graphicsMode;
     this.updateRadarVisibility();
-    if (previous.graphicsMode !== next.graphicsMode || previous.quality !== next.quality) this.slowTime = 0;
+    if (previous.graphicsMode !== next.graphicsMode || previous.quality !== next.quality) this.autoQuality.reset();
     this.menu.setSettings(next);
     this.resize();
   }
@@ -260,12 +277,43 @@ export class Game {
 
   // ---------------------------------------------------------------- states
 
+  /**
+   * Starts a game on the battlefield for `seed` at the chosen map size, with
+   * fords if they are turned on. The
+   * current battlefield is reused when it matches; otherwise a new one is
+   * generated off the main thread while the menu stays up, and the game
+   * starts when it arrives unless another start was asked for meanwhile.
+   */
   private startNewGame(seed: number): void {
     const mapSize = this.settings.mapSize;
-    const sameWorld = seed === this.sim.world.seed && mapSize === this.mapSize;
+    const fords = this.settings.fords;
+    const request = ++this.worldRequest;
+    if (seed === this.sim.world.seed && mapSize === this.mapSize && fords === this.worldFords) {
+      this.menu.setStatus(null);
+      this.beginGame(seed, mapSize, fords, this.sim.world);
+      return;
+    }
+    this.menu.setStatus('GENERATING BATTLEFIELD…');
+    this.worldLoader.load(seed, mapSize, fords).then(
+      (world) => {
+        if (request !== this.worldRequest) return;
+        this.menu.setStatus(null);
+        this.beginGame(seed, mapSize, fords, world);
+      },
+      (error: unknown) => {
+        console.error('Battlefield generation failed', error);
+        if (request === this.worldRequest) this.menu.setStatus('BATTLEFIELD GENERATION FAILED');
+      },
+    );
+  }
+
+  /** Starts play on `world`, the battlefield for `seed` at `mapSize`, with or without `fords`. */
+  private beginGame(seed: number, mapSize: MapSize, fords: boolean, world: World): void {
+    const sameWorld = world === this.sim.world;
     this.seed = seed;
     this.mapSize = mapSize;
-    this.sim = new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, world: sameWorld ? this.sim.world : undefined });
+    this.worldFords = fords;
+    this.sim = new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, world });
     if (!sameWorld) {
       this.worldView.setWorld(this.sim.world);
       this.worldView.applyMode(GRAPHICS_MODE_SPECS[this.settings.graphicsMode], this.settings, QUALITY_PRESETS[this.settings.quality].shadows);
@@ -287,7 +335,7 @@ export class Game {
     this.audio.stopAll();
     this.audio.setPaused(false);
     this.updateRadarVisibility();
-    const banner = `${DIFFICULTY[this.settings.difficulty].label}  ·  ${mapSizeLabel(mapSize)}  ·  BATTLEFIELD ${seed}`;
+    const banner = `${DIFFICULTY[this.settings.difficulty].label}  ·  ${mapSizeLabel(mapSize)}  ·  BATTLEFIELD ${seed}${fords ? '  ·  FORDS' : ''}`;
     this.hud.showBanner('ENGAGE', banner.toUpperCase(), 2.4);
     void this.requestLock();
   }
@@ -310,6 +358,7 @@ export class Game {
 
   private resume(): void {
     if (this.state !== 'paused') return;
+    this.cancelWorldLoad();
     this.state = 'playing';
     this.menu.hide();
     this.accumulator.reset();
@@ -351,8 +400,9 @@ export class Game {
   }
 
   private toMainMenu(): void {
+    this.cancelWorldLoad();
     this.state = 'menu';
-    this.sim = this.createAttractSimulation();
+    this.sim = this.createAttractSimulation(this.sim.world);
     this.worldView.clearTanks();
     this.worldView.effects.clear();
     this.hud.setVisible(false);
@@ -645,18 +695,19 @@ export class Game {
     this.audio.update(dt, f);
   }
 
-  /** Drops the quality preset when the frame rate stays low (if enabled). */
+  /** Steps the graphics down when the frame rate stays low (if enabled): lake reflections first, then the quality preset. */
   private checkPerformance(dt: number): void {
     if (!this.settings.autoQuality) return;
-    if (this.perf.fps < SLOW_FPS) this.slowTime += dt;
-    else this.slowTime = Math.max(0, this.slowTime - dt * 2);
-    if (this.slowTime < SLOW_SECONDS) return;
-    this.slowTime = 0;
-    const index = QUALITY_LEVELS.indexOf(this.settings.quality);
-    if (index <= 0) return;
-    const lower = QUALITY_LEVELS[index - 1]!;
-    this.updateSettings({ quality: lower });
-    this.hud.toast(`LOW FRAME RATE: QUALITY SET TO ${lower.toUpperCase()}`);
+    // Turning reflections off only helps while a lake is actually being mirrored.
+    const step = this.autoQuality.update(dt, this.perf.fps, this.settings.quality, this.worldView.reflectedLake >= 0);
+    if (!step) return;
+    if (step.kind === 'reflections') {
+      this.worldView.setReflectionsAllowed(false);
+      this.hud.toast('LOW FRAME RATE: LAKE REFLECTIONS OFF');
+      return;
+    }
+    this.updateSettings({ quality: step.level });
+    this.hud.toast(`LOW FRAME RATE: QUALITY SET TO ${step.level.toUpperCase()}`);
   }
 
   // ---------------------------------------------------------------- debug
@@ -685,14 +736,17 @@ export class Game {
         rivers: this.sim.world.rivers.length,
         lakes: this.sim.world.lakes.length,
         bridges: this.sim.world.bridges.length,
+        fords: this.sim.world.fords.length,
         playerBridge: p.bridgeId,
         playerDepth: this.sim.world.water.depthAt(p.x, p.z),
+        reflecting: this.worldView.reflectingLakes,
+        reflectedLake: this.worldView.reflectedLake,
       },
     };
   }
 
   /** Development helper: drive the game from automated tests. */
-  debugCommand(command: 'start' | 'pause' | 'resume' | 'camera' | 'map' | 'mode' | 'kill-player' | 'spawn' | 'bridge'): void {
+  debugCommand(command: 'start' | 'pause' | 'resume' | 'camera' | 'map' | 'mode' | 'kill-player' | 'spawn' | 'bridge' | 'ford'): void {
     switch (command) {
       case 'start':
         this.startNewGame(this.seed);
@@ -719,25 +773,22 @@ export class Game {
         this.sim.spawnEnemy('standard');
         break;
       case 'bridge':
-        this.placePlayerAtBridge();
+        this.placePlayer(bridgeApproach(this.sim.world, this.sim.player.x, this.sim.player.z));
+        break;
+      case 'ford':
+        this.placePlayer(fordApproach(this.sim.world, this.sim.player.x, this.sim.player.z));
         break;
     }
   }
 
-  /** Development helper: puts the player on the approach to the nearest bridge, facing across it. */
-  private placePlayerAtBridge(): void {
-    const p = this.sim.player;
-    let nearest: Bridge | null = null;
-    for (const b of this.sim.world.bridges) {
-      if (!nearest || Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(nearest.x - p.x, nearest.z - p.z)) nearest = b;
-    }
-    if (!nearest) return;
-    const along = nearest.halfLength + 20;
-    p.placeAt(nearest.x + toWorldX(0, along, nearest.yaw), nearest.z + toWorldZ(0, along, nearest.yaw), nearest.yaw, this.sim.world);
+  /** Development helper: puts the player at `spot`, if there is one. */
+  private placePlayer(spot: Placement | null): void {
+    if (spot) this.sim.player.placeAt(spot.x, spot.z, spot.heading, this.sim.world);
   }
 
   dispose(): void {
     cancelAnimationFrame(this.rafId);
+    this.worldLoader.dispose();
     this.input.dispose();
     this.audio.dispose();
     this.radar.dispose();

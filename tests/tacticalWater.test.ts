@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MapProjection } from '../src/ui/MapProjection';
-import { drawBridgeSymbol, tacticalTheme } from '../src/ui/tacticalTheme';
-import { drawMapBridges, ShorelineIndex } from '../src/ui/tacticalWater';
+import { drawBridgeSymbol, drawFordSymbol, tacticalTheme } from '../src/ui/tacticalTheme';
+import { drawMapBridges, drawMapFords, fordSignAngle, ShorelineIndex } from '../src/ui/tacticalWater';
 import { PARAPET_THICKNESS } from '../src/world/Bridge';
 import { shorelineSegments } from '../src/world/shoreline';
 import { Terrain } from '../src/world/Terrain';
+import type { Ford } from '../src/world/Water';
 import { World } from '../src/world/World';
 import { generateWorld } from '../src/world/WorldGenerator';
 import { makeRiverWorld } from './waterFixtures';
@@ -14,13 +15,17 @@ interface Recording {
   /** Points of each filled and each stroked path, as flat [x, y, ...]. */
   readonly fills: number[][];
   readonly strokes: number[][];
+  /** Line dash in force at each stroke. */
+  readonly dashes: number[][];
 }
 
 /** A stand-in 2D context that records the points of the paths it fills and strokes. */
 function recordingContext(): Recording {
   let path: number[] = [];
+  let dash: number[] = [];
   const fills: number[][] = [];
   const strokes: number[][] = [];
+  const dashes: number[][] = [];
   const ctx = {
     fillStyle: '',
     strokeStyle: '',
@@ -40,9 +45,13 @@ function recordingContext(): Recording {
     },
     stroke: (): void => {
       strokes.push(path);
+      dashes.push(dash);
+    },
+    setLineDash: (segments: number[]): void => {
+      dash = segments;
     },
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, fills, strokes };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, fills, strokes, dashes };
 }
 
 interface Extent {
@@ -198,5 +207,71 @@ describe('drawMapBridges', () => {
     const { ctx, fills } = recordingContext();
     drawMapBridges(ctx, theme, world, new MapProjection(800, 600, bridge.x + 2000, bridge.z, 2), 40);
     expect(fills).toHaveLength(0);
+  });
+});
+
+describe('drawFordSymbol', () => {
+  const theme = tacticalTheme('neon');
+
+  it('marks the crossing with two dashed lines across the river, then clears the dash', () => {
+    const { ctx, fills, strokes, dashes } = recordingContext();
+    // A ford crossing east-west (a quarter turn): lines 20 px long either side, 4 px up and down stream.
+    drawFordSymbol(ctx, theme, 100, 50, 20, 4, Math.PI / 2);
+    expect(fills).toHaveLength(0);
+    expect(strokes).toHaveLength(1);
+    expect(dashes[0]!.length).toBeGreaterThan(0);
+    expectExtent(extent(strokes[0]!), { minX: 80, maxX: 120, minY: 46, maxY: 54 });
+    const ys = strokes[0]!.filter((_, k) => k % 2 === 1);
+    expect(new Set(ys.map((y) => Math.round(y)))).toEqual(new Set([46, 54]));
+    ctx.stroke();
+    expect(dashes[1]).toEqual([]);
+  });
+
+  it('turns with the angle: unturned it stands upright', () => {
+    const { ctx, strokes } = recordingContext();
+    drawFordSymbol(ctx, theme, 100, 50, 20, 4, 0);
+    expectExtent(extent(strokes[0]!), { minX: 96, maxX: 104, minY: 30, maxY: 70 });
+  });
+});
+
+describe('drawMapFords', () => {
+  const theme = tacticalTheme('hybrid');
+  const river = makeRiverWorld();
+  // A ford on the north-south river: the crossing runs east-west.
+  const ford: Ford = { id: 0, riverId: 0, x: 0, z: -150, s: 150, tx: 0, tz: 1, halfWidth: 14, halfLength: 10, depth: 0.6 };
+  const world = new World(river.seed, river.terrain, [], river.playableHalfSize, { water: river.water, rivers: river.rivers, lakes: [], bridges: [], fords: [ford] });
+
+  it('draws the ford sign across the river at its map position, to scale', () => {
+    const { ctx, strokes } = recordingContext();
+    drawMapFords(ctx, theme, world, new MapProjection(800, 600, ford.x, ford.z, 2), 40);
+    expect(strokes).toHaveLength(1);
+    const sign = extent(strokes[0]!);
+    expect((sign.minX + sign.maxX) / 2).toBeCloseTo(400);
+    expect((sign.minY + sign.maxY) / 2).toBeCloseTo(300);
+    expect(sign.maxX - sign.minX).toBeGreaterThan(2 * ford.halfWidth * 2);
+    expect(sign.maxY - sign.minY).toBeCloseTo(2 * ford.halfLength * 2);
+  });
+
+  it('keeps the sign readable when zoomed far out, and skips fords outside the view', () => {
+    const far = recordingContext();
+    drawMapFords(far.ctx, theme, world, new MapProjection(800, 600, ford.x, ford.z, 0.01), 40);
+    const sign = extent(far.strokes[0]!);
+    expect(sign.maxX - sign.minX).toBeCloseTo(10);
+    expect(sign.maxY - sign.minY).toBeCloseTo(4);
+    const away = recordingContext();
+    drawMapFords(away.ctx, theme, world, new MapProjection(800, 600, ford.x + 2000, ford.z, 2), 40);
+    expect(away.strokes).toHaveLength(0);
+  });
+
+  it('turns the sign square to the flow', () => {
+    // Flowing south, the crossing runs east-west: a quarter turn, like a bridge deck along X.
+    expect(Math.abs(fordSignAngle(ford))).toBeCloseTo(Math.PI / 2);
+    expect(Math.abs(fordSignAngle({ ...ford, tx: 1, tz: 0 }))).toBeCloseTo(Math.PI);
+  });
+
+  it('draws nothing on a battlefield without fords', () => {
+    const { ctx, strokes } = recordingContext();
+    drawMapFords(ctx, theme, river, new MapProjection(800, 600, 0, 0, 2), 40);
+    expect(strokes).toHaveLength(0);
   });
 });

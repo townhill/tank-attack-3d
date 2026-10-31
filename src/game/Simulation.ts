@@ -51,6 +51,8 @@ export interface SimulationOptions {
   readonly difficulty: Difficulty;
   /** Battlefield size to generate; defaults to standard. Ignored when `world` is given. */
   readonly mapSize?: MapSize;
+  /** Whether a generated battlefield fords each river; defaults to no. Ignored when `world` is given. */
+  readonly fords?: boolean;
   /** Reuse a pre-generated world (e.g. on restart) instead of generating one. */
   readonly world?: World;
   readonly firstWaveDelay?: number;
@@ -95,7 +97,7 @@ export class Simulation {
   private readonly nearby: Obstacle[] = [];
 
   constructor(options: SimulationOptions) {
-    this.world = options.world ?? generateWorld(options.seed, worldOptionsFor(options.mapSize ?? 'standard'));
+    this.world = options.world ?? generateWorld(options.seed, worldOptionsFor(options.mapSize ?? 'standard', options.fords ?? false));
     this.difficulty = options.difficulty;
     this.difficultySpec = DIFFICULTY[options.difficulty];
     this.rng = new Random(options.seed ^ hashSeed(options.difficulty));
