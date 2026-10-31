@@ -27,6 +27,27 @@ describe('Simulation', () => {
     }
   });
 
+  it('finds room for a full set of enemies on Hilly battlefields', () => {
+    for (const seed of [1, 42, 2026]) {
+      const sim = new Simulation({ seed, difficulty: 'hard', terrain: 'hilly', firstWaveDelay: Number.POSITIVE_INFINITY });
+      for (const kind of ['standard', 'heavy', 'scout', 'standard', 'heavy', 'scout'] as const) {
+        expect(sim.spawnEnemy(kind)).toBe(true);
+      }
+    }
+  });
+
+  it('keeps every tank inside the playable area and on the ground on a Hilly battlefield', () => {
+    const sim = new Simulation({ seed: 77, difficulty: 'hard', terrain: 'hilly', firstWaveDelay: 0.5 });
+    run(sim, 40);
+    expect(sim.tanks.length).toBeGreaterThan(1);
+    for (const t of sim.tanks) {
+      expect(Math.abs(t.x)).toBeLessThanOrEqual(sim.world.playableHalfSize);
+      expect(Math.abs(t.z)).toBeLessThanOrEqual(sim.world.playableHalfSize);
+      expect(t.y).toBeGreaterThanOrEqual(sim.world.heightAt(t.x, t.z) - 1e-6);
+      expect(t.up.y).toBeGreaterThan(0.8);
+    }
+  });
+
   it('keeps every tank inside the playable area and on the ground', () => {
     const sim = new Simulation({ seed: 77, difficulty: 'hard', firstWaveDelay: 0.5 });
     run(sim, 40);

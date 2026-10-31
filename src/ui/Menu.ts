@@ -3,9 +3,9 @@
  * Plain accessible HTML (real buttons and form controls, keyboard friendly).
  */
 import type { Difficulty, MapSize } from '../config/settings';
-import { DIFFICULTY, MAP_SIZES, WORLD } from '../config/settings';
+import { DIFFICULTY, MAP_SIZES, TERRAIN_TYPES, WORLD } from '../config/settings';
 import type { GraphicsModeId, UserSettings } from '../config/userSettings';
-import { DIFFICULTIES, GRAPHICS_MODES, MAP_SIZE_IDS } from '../config/userSettings';
+import { DIFFICULTIES, GRAPHICS_MODES, MAP_SIZE_IDS, TERRAIN_TYPE_IDS } from '../config/userSettings';
 import { GRAPHICS_MODE_SPECS } from '../rendering/GraphicsModes';
 import { HELP_HTML } from './HUD';
 import { formatDistance } from './MapProjection';
@@ -35,6 +35,7 @@ export interface GameOverSummary {
   readonly accuracy: number;
   readonly difficulty: string;
   readonly mapSize: string;
+  readonly terrain: string;
   readonly seed: number;
 }
 
@@ -80,6 +81,7 @@ const SECTIONS: readonly { readonly title: string; readonly controls: readonly C
   {
     title: 'Battlefield',
     controls: [
+      { kind: 'select', key: 'terrain', label: 'Terrain (new battlefields)', options: TERRAIN_TYPE_IDS.map((t) => [t, TERRAIN_TYPES[t].label] as const) },
       { kind: 'toggle', key: 'fords', label: 'Shallow river fords (new battlefields)' },
     ],
   },
@@ -331,6 +333,7 @@ export class Menu {
     row('Accuracy', `${Math.round(s.accuracy * 100)}%`);
     row('Difficulty', s.difficulty);
     row('Battlefield size', s.mapSize);
+    row('Terrain', s.terrain);
     row('Battlefield seed', String(s.seed));
     this.showScreen('gameover');
   }

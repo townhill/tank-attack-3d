@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { WORLD } from '../src/config/settings';
+import { TERRAIN_TYPES, WORLD } from '../src/config/settings';
 import type { Obstacle, ObstacleShape } from '../src/world/Obstacle';
 import { boundRadiusOf, buildingStoreys, STOREY_HEIGHT } from '../src/world/Obstacle';
 import { ObstacleGrid } from '../src/world/ObstacleGrid';
 import { Terrain } from '../src/world/Terrain';
 import { DEFAULT_WORLD_OPTIONS, generateWorld, MAX_BUILDING_SLOPE, worldOptionsFor } from '../src/world/WorldGenerator';
 import { Random } from '../src/utils/random';
+
+/** A Huge battlefield can take over five seconds to generate under coverage instrumentation (ms). */
+const GENERATION_TIMEOUT = 30_000;
 
 /** Terrain whose height is the plane `slopeX * x + slopeZ * z`. */
 function makeRamp(slopeX: number, slopeZ: number, halfSize = 50, cellSize = 5): Terrain {
@@ -409,7 +412,7 @@ describe('generateWorld', () => {
       for (const [x, z] of [[edge, 0], [-edge, 0], [0, edge], [0, -edge]] as const) {
         expect(huge.heightAt(x, z)).toBeGreaterThan(25);
       }
-    });
+    }, GENERATION_TIMEOUT);
   });
 
   it('honours custom generation options', () => {
@@ -424,6 +427,7 @@ describe('generateWorld', () => {
       lakes: 0,
       ponds: 0,
       fords: false,
+      terrainProfile: TERRAIN_TYPES.gentle.profile,
     });
     expect(world.terrain.halfSize).toBe(200);
     expect(world.playableHalfSize).toBe(150);

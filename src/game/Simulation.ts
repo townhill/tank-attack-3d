@@ -7,7 +7,7 @@ import { EnemyController } from '../ai/EnemyAI';
 import { NavPlanner } from '../ai/NavPlanner';
 import { computeDamage, hitZone, applyDamage } from '../combat/DamageSystem';
 import { createProjectileHit, fireWeapon, stepProjectile } from '../combat/WeaponSystem';
-import type { Difficulty, DifficultySpec, EnemyKind, MapSize } from '../config/settings';
+import type { Difficulty, DifficultySpec, EnemyKind, MapSize, TerrainType } from '../config/settings';
 import { AI, DAMAGE, DIFFICULTY, PROJECTILE, TANK_SPECS } from '../config/settings';
 import { ProjectilePool } from '../entities/Projectile';
 import type { Projectile } from '../entities/Projectile';
@@ -53,6 +53,8 @@ export interface SimulationOptions {
   readonly mapSize?: MapSize;
   /** Whether a generated battlefield fords each river; defaults to no. Ignored when `world` is given. */
   readonly fords?: boolean;
+  /** Shape of a generated battlefield's ground; defaults to gentle. Ignored when `world` is given. */
+  readonly terrain?: TerrainType;
   /** Reuse a pre-generated world (e.g. on restart) instead of generating one. */
   readonly world?: World;
   readonly firstWaveDelay?: number;
@@ -97,7 +99,7 @@ export class Simulation {
   private readonly nearby: Obstacle[] = [];
 
   constructor(options: SimulationOptions) {
-    this.world = options.world ?? generateWorld(options.seed, worldOptionsFor(options.mapSize ?? 'standard', options.fords ?? false));
+    this.world = options.world ?? generateWorld(options.seed, worldOptionsFor(options.mapSize ?? 'standard', options.fords ?? false, options.terrain ?? 'gentle'));
     this.difficulty = options.difficulty;
     this.difficultySpec = DIFFICULTY[options.difficulty];
     this.rng = new Random(options.seed ^ hashSeed(options.difficulty));

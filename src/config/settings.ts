@@ -282,6 +282,85 @@ export const MAP_SIZES: Readonly<Record<MapSize, MapSizeSpec>> = {
   huge: { label: 'Huge', scale: 3 },
 };
 
+export type TerrainType = 'gentle' | 'hilly';
+
+/** Fractal noise `amplitude` metres high whose features are roughly `scale` metres across. */
+export interface NoiseLayer {
+  readonly amplitude: number;
+  readonly scale: number;
+  readonly octaves: number;
+}
+
+/** Rounded ridgelines raised along the zero lines of low-frequency noise, easing smoothly to nothing either side. */
+export interface RidgeLayer {
+  /** Height of the crest (metres); 0 for none. */
+  readonly height: number;
+  readonly scale: number;
+  /** How far either side of a zero line a ridge reaches, in noise units; wider ridges have gentler flanks. */
+  readonly width: number;
+}
+
+/** How the valley around a river is cut: an optional gentle bench beside each bank, then walls out to `reach`. */
+export interface RiverValley {
+  /** Width of the bench beyond each bank top (metres); 0 for none. */
+  readonly benchWidth: number;
+  /** Steepest rise across the bench, below the bridge ramp grade so approaches can climb it. */
+  readonly benchSlope: number;
+  /** Ground further than this beyond a bank top is never touched (metres). */
+  readonly reach: number;
+}
+
+/** How a terrain type shapes the ground inside the boundary mountains. */
+export interface TerrainProfile {
+  /** Broad hills; the valleys are the low ground between them. */
+  readonly hills: NoiseLayer;
+  /** Smaller rises and dips on top of the hills. */
+  readonly detail: NoiseLayer;
+  /** Ridgelines that break line of sight at fighting range. */
+  readonly ridges: RidgeLayer;
+  /** Share of full height kept in the flattest combat basins (0..1). */
+  readonly basinFloor: number;
+  /** Share of full height kept at the player's spawn, so it starts on level ground (0..1). */
+  readonly spawnFloor: number;
+  readonly riverValley: RiverValley;
+}
+
+export interface TerrainTypeSpec {
+  readonly label: string;
+  readonly profile: TerrainProfile;
+}
+
+export const TERRAIN_TYPES: Readonly<Record<TerrainType, TerrainTypeSpec>> = {
+  // Gentle is the battlefield as it was before terrain types; its numbers must not change.
+  gentle: {
+    label: 'Gentle',
+    profile: {
+      hills: { amplitude: 16, scale: 380, octaves: 4 },
+      detail: { amplitude: 4, scale: 110, octaves: 3 },
+      ridges: { height: 0, scale: 1, width: 0 },
+      basinFloor: 0.22,
+      spawnFloor: 0.12,
+      riverValley: { benchWidth: 0, benchSlope: 0, reach: 120 },
+    },
+  },
+  hilly: {
+    label: 'Hilly',
+    // Tuned with tests/coverReport.test.ts, rivers and their valley benches included: meets the PRD
+    // cover target (1.5x Gentle's hidden share) at the cost of about 6% of ground steeper than enemies
+    // like, which the user accepted.
+    profile: {
+      hills: { amplitude: 46, scale: 640, octaves: 4 },
+      detail: { amplitude: 5, scale: 120, octaves: 3 },
+      ridges: { height: 9, scale: 400, width: 0.4 },
+      basinFloor: 0.6,
+      // Taller hills need a flatter floor for the spawn to stay as level as Gentle's.
+      spawnFloor: 0.06,
+      // Rivers cut deep through tall hills; without a bench, bridge ramps cannot climb out of the cutting.
+      riverValley: { benchWidth: 60, benchSlope: 0.12, reach: 150 },
+    },
+  },
+};
+
 export const WAVES = {
   baseEnemyCount: 3,
   enemiesPerWave: 2,

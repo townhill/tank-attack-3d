@@ -16,10 +16,10 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope;
 
 scope.onmessage = (event) => {
-  const { id, seed, mapSize, fords } = event.data;
+  const { id, seed, mapSize, fords, terrain } = event.data;
   let reply: WorldReply;
   try {
-    reply = { id, world: packWorld(generateWorld(seed, worldOptionsFor(mapSize, fords))) };
+    reply = { id, world: packWorld(generateWorld(seed, worldOptionsFor(mapSize, fords, terrain))) };
   } catch (error) {
     scope.postMessage({ id, error: error instanceof Error ? error.message : String(error) }, []);
     return;
