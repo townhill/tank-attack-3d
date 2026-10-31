@@ -4,11 +4,12 @@ import { NAV, SIM_DT, TANK_SPECS } from '../src/config/settings';
 import { Tank } from '../src/entities/Tank';
 import { createPlayerCommand, Simulation } from '../src/game/Simulation';
 import { Random } from '../src/utils/random';
-import { makeRiverWorld } from './waterFixtures';
+import type { World } from '../src/world/World';
+import { makeFordWorld, makeRiverWorld } from './waterFixtures';
 
 /** A battle on the river world with no enemy waves; the player waits far off in the south-west corner. */
-function riverBattle(bridgeZs: readonly number[] = [0]): Simulation {
-  const sim = new Simulation({ seed: 3, difficulty: 'easy', world: makeRiverWorld(bridgeZs), firstWaveDelay: Number.POSITIVE_INFINITY });
+function riverBattle(bridgeZs: readonly number[] = [0], world: World = makeRiverWorld(bridgeZs)): Simulation {
+  const sim = new Simulation({ seed: 3, difficulty: 'easy', world, firstWaveDelay: Number.POSITIVE_INFINITY });
   sim.player.placeAt(-230, -230, 0, sim.world);
   return sim;
 }
@@ -35,12 +36,14 @@ interface BattleLog {
   /** Ticks on which enemies on one deck were driving opposite ways. */
   opposingTicks: number;
   bridgeTicks: number;
+  /** Tank ticks spent in the shallows of a ford. */
+  fordTicks: number;
   enemyShots: number;
 }
 
 /** Runs the battle, repeating each mission's gunfire alert every five seconds. */
 function runMissions(sim: Simulation, missions: Mission[], seconds: number): BattleLog {
-  const log: BattleLog = { worstIntrusion: -Infinity, opposingTicks: 0, bridgeTicks: 0, enemyShots: 0 };
+  const log: BattleLog = { worstIntrusion: -Infinity, opposingTicks: 0, bridgeTicks: 0, fordTicks: 0, enemyShots: 0 };
   const cmd = createPlayerCommand();
   const ticks = Math.round(seconds / SIM_DT);
   for (let i = 0; i < ticks; i++) {
@@ -52,6 +55,7 @@ function runMissions(sim: Simulation, missions: Mission[], seconds: number): Bat
     for (const m of missions) {
       const t = m.controller.tank;
       if (Math.sign(t.x) === Math.sign(m.targetX) && Math.abs(t.x) > 30) m.reachedTargetBank = true;
+      if (sim.world.nav.fordAt(t.x, t.z) >= 0) log.fordTicks++;
       if (t.bridgeId >= 0) {
         log.bridgeTicks++;
         directions.add(Math.sign(Math.sin(t.heading)));
@@ -71,6 +75,19 @@ describe('Enemies and rivers', () => {
     const log = runMissions(sim, [mission], 60);
     expect(log.bridgeTicks).toBeGreaterThan(60);
     expect(mission.reachedTargetBank).toBe(true);
+    expect(log.worstIntrusion).toBeLessThan(0.5);
+  });
+
+  it('an enemy on the far bank wades across a ford to investigate gunfire there when the ford is the shorter way', () => {
+    // A bridge at z = 100 and a ford further south.
+    const world = makeFordWorld();
+    const ford = world.fords[0]!;
+    const sim = riverBattle([], world);
+    const mission: Mission = { controller: addEnemy(sim, 1, 180, ford.z, -Math.PI / 2), targetX: -150, targetZ: ford.z, reachedTargetBank: false };
+    const log = runMissions(sim, [mission], 60);
+    expect(mission.reachedTargetBank).toBe(true);
+    expect(log.fordTicks).toBeGreaterThan(30);
+    expect(log.bridgeTicks).toBe(0);
     expect(log.worstIntrusion).toBeLessThan(0.5);
   });
 

@@ -1,13 +1,14 @@
 /**
  * Route planning shared by every enemy: a cap on path searches per tick,
- * legs that cross rivers by the best bridge for each tank, and right of way
- * on each bridge for enemies already crossing it. Everything is decided in
- * tank order from simulation state, so planning stays deterministic.
+ * legs that cross rivers by the best bridge or ford for each tank, and right
+ * of way on each bridge for enemies already crossing it. Everything is
+ * decided in tank order from simulation state, so planning stays
+ * deterministic.
  */
 import { NAV } from '../config/settings';
 import type { Tank } from '../entities/Tank';
 import type { Bridge } from '../world/Bridge';
-import type { NavGrid, PortalEnd } from '../world/NavGrid';
+import type { NavGrid, Portal, PortalEnd } from '../world/NavGrid';
 import { toWorldX, toWorldZ } from '../world/Obstacle';
 import type { World } from '../world/World';
 import type { Route } from './PathFinder';
@@ -21,10 +22,12 @@ const LINE_UP_DISTANCE = 22;
 const DECK_INSET = 4;
 /** Waypoints kept free at the end of a route for the crossing that follows the approach. */
 const CROSSING_WAYPOINTS = 3;
+/** Wading a ford counts this much longer than its width, for the slower going in the water. */
+const FORD_COST_FACTOR = 1.6;
 
 interface Crossing {
-  readonly bridgeId: number;
-  /** The end the tank drives onto the deck from. */
+  readonly portal: Portal;
+  /** The end the tank sets off from: onto the deck, or into the ford. */
   readonly end: PortalEnd;
 }
 
@@ -103,6 +106,8 @@ export class NavPlanner {
     this.stats.maxPlansInTick = Math.max(this.stats.maxPlansInTick, this.plansThisTick);
     if (this.bridges[tank.bridgeId]) return this.finishCrossing(tank, route);
     const nav = this.nav;
+    const wading = nav.fordAt(tank.x, tank.z);
+    if (wading >= 0) return this.finishFord(tank, wading, gx, gz, route);
     const from = nav.sideAt(tank.x, tank.z);
     const to = nav.sideAt(gx, gz);
     if (from < 0 || to < 0) return false;
@@ -110,7 +115,9 @@ export class NavPlanner {
 
     const crossing = this.chooseCrossing(tank, from, to, gx, gz);
     if (!crossing) return false;
-    const b = this.bridges[crossing.bridgeId]!;
+    if (crossing.portal.bridgeId < 0) return this.planFord(tank, crossing, route);
+    const bridgeId = crossing.portal.bridgeId;
+    const b = this.bridges[bridgeId]!;
     const sign = crossing.end.sign;
     const direction = -sign;
     const lane = -direction * NAV.laneOffset;
@@ -118,7 +125,7 @@ export class NavPlanner {
     const lineUp = sign * (b.halfLength + Math.min(LINE_UP_DISTANCE, b.rampLength));
     const reached = this.search(tank.x, tank.z, deckX(b, lineUp, approachLane), deckZ(b, lineUp, approachLane), route);
     if (!reached || route.count > route.xs.length - CROSSING_WAYPOINTS) return route.count > 0;
-    route.bridgeId = crossing.bridgeId;
+    route.bridgeId = bridgeId;
     route.direction = direction;
     route.crossingStart = route.count - 1;
     for (const along of [sign * (b.halfLength - DECK_INSET), -sign * (b.halfLength - DECK_INSET)]) {
@@ -132,6 +139,36 @@ export class NavPlanner {
     const found = this.finder.find(sx, sz, gx, gz, route);
     this.stats.maxExpanded = Math.max(this.stats.maxExpanded, this.finder.lastExpanded);
     return found;
+  }
+
+  /** To the near bank of a ford, then straight across the shallows to the far bank. */
+  private planFord(tank: Tank, crossing: Crossing, route: Route): boolean {
+    const near = crossing.end;
+    const far = farEnd(crossing.portal, near);
+    const reached = this.search(tank.x, tank.z, near.x, near.z, route);
+    if (!reached || !route.push(far.x, far.z)) return route.count > 0;
+    return true;
+  }
+
+  /**
+   * The rest of a ford crossing already under way: out onto the goal's bank,
+   * or onto the bank ahead when the goal lies on neither.
+   */
+  private finishFord(tank: Tank, fordId: number, gx: number, gz: number, route: Route): boolean {
+    const portal = this.nav.portals.find((p) => p.fordId === fordId);
+    if (!portal) return false;
+    const [a, b] = portal.ends;
+    const to = this.nav.sideAt(gx, gz);
+    let exit: PortalEnd;
+    if (a.side === to) exit = a;
+    else if (b.side === to) exit = b;
+    else {
+      const fx = Math.sin(tank.heading);
+      const fz = -Math.cos(tank.heading);
+      exit = (a.x - tank.x) * fx + (a.z - tank.z) * fz >= (b.x - tank.x) * fx + (b.z - tank.z) * fz ? a : b;
+    }
+    route.push(exit.x, exit.z);
+    return true;
   }
 
   /** The rest of a crossing already under way: off the far end the tank is facing. */
@@ -150,9 +187,10 @@ export class NavPlanner {
   }
 
   /**
-   * The first bridge on the cheapest way from the tank to (gx, gz), found by
-   * Dijkstra over the tank, the goal and both ends of every bridge. Each
-   * enemy adds its own small preference to each bridge, so a pack spreads out.
+   * The first crossing on the cheapest way from the tank to (gx, gz), found
+   * by Dijkstra over the tank, the goal and both ends of every bridge and
+   * ford. Each enemy adds its own small preference to each crossing, so a
+   * pack spreads out.
    */
   private chooseCrossing(tank: Tank, from: number, to: number, gx: number, gz: number): Crossing | null {
     const portals = this.nav.portals;
@@ -186,16 +224,22 @@ export class NavPlanner {
       }
       if (u >= 2) {
         const portal = portals[(u - 2) >> 1]!;
-        const b = this.bridges[portal.bridgeId]!;
-        relax(u, u ^ 1, 2 * b.halfLength + preference(tank.id, portal.bridgeId));
+        const wade = portal.fordId >= 0;
+        const length = wade ? portal.length * FORD_COST_FACTOR : portal.length;
+        relax(u, u ^ 1, length + preference(tank.id, wade ? this.bridges.length + portal.fordId : portal.bridgeId));
       }
     }
     if (cost[1] === Infinity) return null;
     let node = 1;
     while (prev[node]! > 0) node = prev[node]!;
     if (node < 2) return null;
-    return { bridgeId: portals[(node - 2) >> 1]!.bridgeId, end: endOf(node) };
+    return { portal: portals[(node - 2) >> 1]!, end: endOf(node) };
   }
+}
+
+/** The other end of `portal` from `end`. */
+function farEnd(portal: Portal, end: PortalEnd): PortalEnd {
+  return portal.ends[0] === end ? portal.ends[1] : portal.ends[0];
 }
 
 /** Direction of travel along a deck for a tank heading `heading`: the sign of the change in `along`. */
@@ -213,7 +257,7 @@ function deckZ(b: Bridge, along: number, lateral: number): number {
   return b.z + toWorldZ(lateral, along, b.yaw);
 }
 
-/** A tank's own extra cost for a bridge, fixed per tank and bridge (metres). */
+/** A tank's own extra cost for a crossing, fixed per tank and crossing (metres). */
 function preference(tankId: number, bridgeId: number): number {
   let h = Math.imul(tankId + 1, 0x9e3779b1) ^ Math.imul(bridgeId + 1, 0x85ebca6b);
   h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);

@@ -1,7 +1,8 @@
 /**
- * Continuous sounds: the player's engine, track clatter and turret servo, and
- * a fixed pool of positional engine loops that follow the nearest enemies.
- * AudioManager builds these lazily in update() and tears them down in stopAll().
+ * Continuous sounds: the player's engine, track clatter, turret servo and
+ * wading slosh, and a fixed pool of positional engine loops that follow the
+ * nearest enemies. AudioManager builds these lazily in update() and tears
+ * them down in stopAll().
  */
 import { TANK_SPECS } from '../config/settings';
 import {
@@ -12,6 +13,7 @@ import {
   selectNearestEnemies,
   servoParams,
   trackParams,
+  wadeParams,
 } from './audioMath';
 import { createPanner, setPannerPosition, smooth, type NoiseBank } from './synth';
 import type { AudioEnemy, AudioFrame } from './types';
@@ -20,6 +22,7 @@ const ENGINE_LEVEL = 0.5;
 const RUMBLE_LEVEL = 0.35;
 const TRACK_LEVEL = 0.5;
 const SERVO_LEVEL = 0.6;
+const WADE_LEVEL = 0.55;
 const ENEMY_LEVEL = 1;
 const ENEMY_REF_DISTANCE = 15;
 /** Engine sound source height above an enemy's origin (m). */
@@ -125,9 +128,13 @@ export class PlayerLoops {
   private readonly clatterLfo: OscillatorNode;
   private readonly servoGain: GainNode;
   private readonly servoOsc: OscillatorNode;
+  private readonly wadeGain: GainNode;
+  private readonly wadeFilter: BiquadFilterNode;
+  private readonly sloshLfo: OscillatorNode;
   private readonly engine = engineParams(0, 0);
   private readonly track = trackParams(0, 1);
   private readonly servo = servoParams(0);
+  private readonly wade = wadeParams(0, 1, 0);
 
   constructor(ctx: BaseAudioContext, bank: NoiseBank, dest: AudioNode, retro: boolean) {
     const g = new LoopGraph(ctx);
@@ -158,6 +165,13 @@ export class PlayerLoops {
     this.servoOsc = g.osc('sawtooth', 380, g.filter('bandpass', 1400, 3, this.servoGain));
     g.osc('sine', 27, g.modulate(8, this.servoOsc.frequency));
 
+    // Wading: band-passed noise swelling and ebbing with a slow "slosh" LFO.
+    this.wadeGain = g.gain(0, this.output);
+    const sloshAm = g.gain(0.5, this.wadeGain);
+    this.wadeFilter = g.filter('bandpass', 900, 1.1, sloshAm);
+    g.noise(bank.white, this.wadeFilter);
+    this.sloshLfo = g.osc('sine', 1.2, g.modulate(0.45, sloshAm.gain));
+
     this.setRetro(retro);
   }
 
@@ -167,6 +181,7 @@ export class PlayerLoops {
     const e = engineParams(speedFraction, frame.throttle, this.engine);
     const tr = trackParams(frame.playerSpeed, maxSpeed, this.track);
     const sv = servoParams(frame.turretYawRate, PLAYER_TRAVERSE, this.servo);
+    const wd = wadeParams(frame.playerSpeed, maxSpeed, frame.playerWadeDepth, this.wade);
     const on = frame.playerAlive ? 1 : 0;
 
     smooth(this.engineOsc.frequency, e.frequency, now, 0.12);
@@ -177,9 +192,12 @@ export class PlayerLoops {
     smooth(this.rumbleGain.gain, (0.3 + 0.7 * speedFraction) * RUMBLE_LEVEL * on, now, 0.15);
     smooth(this.trackFilter.frequency, tr.filterHz, now, 0.1);
     smooth(this.clatterLfo.frequency, tr.clatterRate, now, 0.1);
-    smooth(this.trackGain.gain, tr.gain * TRACK_LEVEL * on, now, 0.08);
+    smooth(this.trackGain.gain, tr.gain * wd.trackDamp * TRACK_LEVEL * on, now, 0.08);
     smooth(this.servoOsc.frequency, sv.frequency, now, 0.05);
     smooth(this.servoGain.gain, sv.gain * SERVO_LEVEL * on, now, 0.04);
+    smooth(this.wadeFilter.frequency, wd.filterHz, now, 0.15);
+    smooth(this.sloshLfo.frequency, wd.sloshRate, now, 0.2);
+    smooth(this.wadeGain.gain, wd.gain * WADE_LEVEL * on, now, 0.12);
   }
 
   setRetro(retro: boolean): void {

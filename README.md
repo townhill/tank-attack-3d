@@ -10,6 +10,7 @@ Everything is original code and procedurally generated geometry and sound. There
 - **Three cameras:** gunner (first person), chase (third person) and tactical (overhead).
 - **Three enemy types:** standard, heavy and scout, each with distinct AI behaviour, across escalating waves.
 - **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks, futuristic structures and two- to four-storey buildings.
+- **Rivers, lakes and bridges:** rivers cross every battlefield with bridges along them, and lakes and ponds lie in the hollows. Tanks wade the shallows but can't cross deep water, and enemies plan their way over the bridges. Optional fords add shallow crossings.
 
 ## Screenshots
 
@@ -23,12 +24,20 @@ Everything is original code and procedurally generated geometry and sound. There
     <td><b>Gunner view.</b> Target brackets mark enemies in line of sight. The gun marker turns red when the shot would hit.</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/tactical-map.jpg" alt="Tactical map of the whole battlefield with shaded relief, contour lines, A to J and 1 to 10 grid references, structures, and enemy tanks with motion vectors"></td>
+    <td><img src="docs/screenshots/tactical-map.jpg" alt="Tactical map of the whole battlefield with shaded relief, contour lines, a river crossed by two bridges and a ford, a lake and two ponds, A to J and 1 to 10 grid references, structures, and enemy tanks with motion vectors"></td>
     <td><img src="docs/screenshots/main-menu.jpg" alt="Main menu with the glowing VECTOR TANKS title and options for graphics mode, difficulty and map size over a live neon battlefield"></td>
   </tr>
   <tr>
-    <td><b>Tactical map.</b> The whole battlefield with relief, contours, grid references and live enemy motion vectors.</td>
+    <td><b>Tactical map.</b> The whole battlefield with relief, contours, water, bridges and fords, grid references and live enemy motion vectors.</td>
     <td><b>Main menu.</b> Choose graphics mode, difficulty and map size over a live battlefield.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/river-bridge.jpg" alt="Chase view from a riverbank: the player's cyan tank looks along a glowing blue river towards an amber through-truss bridge"></td>
+    <td><img src="docs/screenshots/lake-reflection.jpg" alt="Gunner view across a lake that mirrors the green vector mountains and the stars upside down"></td>
+  </tr>
+  <tr>
+    <td><b>Rivers and bridges.</b> The longest crossing on each river is a through truss; the others ride on plate girders.</td>
+    <td><b>Lake reflections.</b> At High quality the nearest lake in view mirrors the scenery.</td>
   </tr>
 </table>
 
@@ -64,7 +73,7 @@ Opens the dev server at <http://localhost:5173>.
 
 The production build is a static site in `dist/`; serve it from any static web host. Asset paths are relative, so a subfolder works too.
 
-**Battlefield seeds:** each new game uses a random battlefield. To replay a specific one, add a seed to the URL, for example `http://localhost:5173/?seed=12345`. **Restart** after game over always reuses the same battlefield. The seed is shown when a game starts and on the game-over screen.
+**Battlefield seeds:** each new game uses a random battlefield. To replay a specific one, add a seed to the URL, for example `http://localhost:5173/?seed=12345`. **Restart** after game over always reuses the same battlefield. The seed is shown when a game starts and on the game-over screen. Turning fords on (see [Water and bridges](#water-and-bridges)) changes the battlefield a seed gives.
 
 ---
 
@@ -172,10 +181,21 @@ Choose the battlefield size on the main menu. It is saved with your settings and
 |---|---|---|---|
 | Playable area | 1 × 1 km | 2 × 2 km | 3 × 3 km |
 | Rocks and structures | up to 99 | up to 396 | up to 891 |
+| Rivers | 1 | up to 2 | up to 3 |
+| Lakes and ponds | up to 1 and 2 | up to 4 and 8 | up to 9 and 18 |
 
-- Obstacle counts grow with the area, so cover is equally dense on every size.
+- Obstacle, lake and pond counts grow with the area, so cover and water are equally dense on every size. Rivers grow with the side length.
 - Enemy waves still spawn 260–480 m from you, so fights start just as quickly. The extra space is for manoeuvring and flanking.
 - Huge draws roughly four times as many triangles as Standard. If your GPU struggles, *Auto-reduce quality* (on by default) steps the quality down.
+- A new battlefield is generated in a background thread (a Web Worker), so the menu stays responsive and shows *GENERATING BATTLEFIELD…* meanwhile. That takes about half a second on Huge. Building its 3D scene afterwards still holds the game for about 0.2 s.
+
+### Water and bridges
+
+- **Wading:** water up to 1.2 m deep slows a tank, to under half speed at its deepest. Wading throws spray, leaves a wake and sloshes. Deeper water stops a tank at its edge.
+- **Bridges:** roads cross each river every 220–380 m, on bridges with earth ramps at both ends. The parapets keep you on the deck, so you drive on and off over the ends. Bridges cannot be destroyed.
+- **Shells and sight:** a shell that hits the water throws up a splash. Water never blocks line of sight, so you can shoot, and be shot, across a river.
+- **Enemies:** when water stands between an enemy and where it is going, it plans a route over the cheapest crossing. Enemies already on a bridge have right of way, so tanks never meet head-on on a deck.
+- **Fords (optional):** **Settings → Battlefield → Shallow river fords** gives each river one shallow crossing about 0.6 m deep, away from its bridges. Marker posts with pennants stand on both banks, and the map and radar mark the ford with two dashed lines. Fords are off by default and apply to new battlefields, because they change the battlefield a seed gives. The start banner shows FORDS when they are on.
 
 ### HUD, radar and tactical map
 
@@ -193,13 +213,14 @@ Choose the battlefield size on the main menu. It is saved with your settings and
 - Heading-up by default; north-up is available in Settings.
 - Shows range rings and an animated sweep.
 - Enemies are drawn with kind-specific colours and symbols plus a direction-of-travel line. Contacts beyond range appear as chevrons on the rim.
-- Also shows nearby rocks and structures, shells and wrecks.
+- Also shows nearby rocks and structures, shorelines, bridges and fords, shells and wrecks.
 
 **Tactical map (M):**
 - **What it shows:**
   - The whole battlefield with shaded relief and contour lines.
   - A–J / 1–10 grid references, a scale bar and a legend.
   - Every obstacle at its real footprint. Buildings show one tick per storey.
+  - Water shaded by depth and hatched, with a line where it becomes too deep to cross. Bridges and fords are drawn with their map signs.
   - The player's heading and turret.
   - Every enemy with heading and a six-second motion vector, updated live.
   - Shells and wrecks.
@@ -222,6 +243,7 @@ All three modes render the same scene graph from the same simulation. A mode cha
 | Edges | Phosphor-green lines | Electric colour outlines and armour-panel detail | Coloured edge highlights |
 | Palette | Green on black | Player cyan, standard red, heavy orange, scout magenta, teal terrain, deep-blue mountains, gold shells | As Neon, lighter |
 | Effects | Bloom, flicker, phosphor persistence, optional CRT scanlines, retro sound | Restrained bloom, fog, dynamic muzzle and explosion lights, neon ground grid, reflections | Real-time shadows, stronger lighting, light bloom |
+| Water | Opaque black surface with green ripple lines; it hides what is beneath | Dark, glowing water with ripples drifting downstream; lakes mirror the scenery at High quality | See-through water tinted by depth; lakes mirror the scenery at High quality |
 | Option | See-through wireframes (original-style X-ray) | – | – |
 
 ### How hidden-line removal works
@@ -240,13 +262,15 @@ The radar and tactical map deliberately show enemies hidden behind terrain, beca
 
 **Settings → Quality** has three levels:
 
-| Level | Resolution and post-processing | Shadows (Hybrid) |
-|---|---|---|
-| **Low** | 1× resolution, no post-processing | None |
-| **Medium** | ≤1.5× resolution, 2× MSAA, half-resolution bloom | 1024 px |
-| **High** | ≤2× resolution, 4× MSAA, bloom | 2048 px |
+| Level | Resolution and post-processing | Shadows (Hybrid) | Water |
+|---|---|---|---|
+| **Low** | 1× resolution, no post-processing | None | Depth tint and glowing shallows |
+| **Medium** | ≤1.5× resolution, 2× MSAA, half-resolution bloom | 1024 px | Adds ripples drifting with the current |
+| **High** | ≤2× resolution, 4× MSAA, bloom | 2048 px | Adds a sheen at grazing angles and a mirror reflection on the nearest lake in view (Neon and Hybrid) |
 
-With *Auto-reduce quality* (on by default), the game steps quality down when the frame rate stays below 40 FPS. Bloom strength, the neon ground grid, scanlines, flicker, field of view, camera shake and target brackets can all be adjusted. A performance overlay (**P**) shows FPS, draw calls, triangles and entity counts.
+The lake reflection renders the scene a second time, at half resolution, while a lake is in view. In testing that added about three quarters more draw calls.
+
+With *Auto-reduce quality* (on by default), the game steps the graphics down when the frame rate stays below 40 FPS: it turns lake reflections off first, then lowers the quality level one step at a time. Bloom strength, the neon ground grid, scanlines, flicker, field of view, camera shake and target brackets can all be adjusted. A performance overlay (**P**) shows FPS, draw calls, triangles and entity counts.
 
 ---
 
@@ -262,7 +286,16 @@ src/
   utils/                  math (compass headings), seeded RNG (mulberry32), simplex noise
   world/
     Terrain.ts            heightfield with exact triangle interpolation
-    WorldGenerator.ts     seeded terrain and obstacle generation
+    WorldGenerator.ts     seeded terrain, water and obstacle generation
+    WaterGenerator.ts     river courses, lakes and ponds; carves channels, beds and banks
+    BridgePlacer.ts, FordPlacer.ts
+                          bridge sites, decks and graded ramps; optional shallow fords
+    Water.ts, Bridge.ts   water levels, depth and the blocked-water field; bridge decks, kerbs and collision
+    distanceField.ts, shoreline.ts, riverFlow.ts
+                          signed distance fields, shorelines and wet banks, river flow for the water shader
+    NavGrid.ts            navigation grid: banks, regions and the crossings that join them
+    WorldLoader.ts, worldWorker.ts, worldTransfer.ts
+                          battlefield generation in a Web Worker, and the packed form it travels in
     Obstacle.ts, ObstacleGrid.ts, Collision.ts, World.ts
                           shapes, spatial index, swept collision tests, raycasts and line of sight
   entities/
@@ -272,6 +305,8 @@ src/
   ai/
     StateMachine.ts       pure, testable enemy state transitions
     Navigation.ts         steering and avoidance
+    PathFinder.ts, PathFollower.ts, NavPlanner.ts
+                          A* routes, route following, choice of crossing and right of way on bridges
     EnemyAI.ts            perception, aiming error, fire control
   game/
     Simulation.ts         deterministic 60 Hz fixed-step world; emits GameEvents
@@ -280,6 +315,7 @@ src/
     Aiming.ts             crosshair raycast, ballistic gun laying, gun-marker prediction
     PlayerController.ts   input to tank command and aim
     HudPresenter.ts       simulation to HUD content
+    AutoQuality.ts        steps graphics down when the frame rate stays low
     Game.ts               orchestrator: states, loop, wiring
   input/InputManager.ts   keyboard, mouse, Pointer Lock, gamepad
   rendering/
@@ -290,12 +326,19 @@ src/
                           procedural tank models; interpolation, tracks, recoil, damage colour, destruction
     TerrainView.ts, ObstacleView.ts, Sky.ts
                           chunked terrain with shader grid; merged obstacle chunks; sky, stars, horizon mountains, moon
+    WaterView.ts, waterDetail.ts
+                          water surfaces and shorelines; the shader features each quality level draws
+    LakeReflection.ts, lakeMirror.ts
+                          planar lake reflection: which lake, the mirrored camera, the render pass
+    BridgeView.ts, bridgeDetail.ts, fordMarkers.ts
+                          bridge solids and line detail (through truss or plate girder); ford marker posts
     Effects.ts, Particles.ts, ProjectileView.ts
                           pooled sparks, smoke, debris, shockwaves, lights; shells and tracers
     CameraState.ts        pure camera-mode and aim state
     CameraManager.ts      camera poses, transitions, collision, shake
     WorldView.ts          scene orchestration
-  ui/                     HUD, Menu, PerfOverlay, Radar, TacticalMap, MapProjection
+  ui/                     HUD, Menu, PerfOverlay, Radar, TacticalMap, MapProjection;
+                          tacticalData, tacticalTheme, tacticalWater (map relief, signs and symbols, water)
   audio/                  Web Audio synthesis: engine, tracks and turret loops, positional effects, retro variants
 tests/                    Vitest suites
 ```
@@ -307,6 +350,7 @@ tests/                    Vitest suites
   - Rendering, audio and HUD only *read* simulation state and consume the `GameEvent` list each tick.
   - Enemy AI never touches rendering.
 - **Fixed timestep:** the simulation runs at 60 Hz. Rendering runs at display rate and interpolates tank and shell poses between ticks.
+- **Generation off the main thread:** battlefields are generated in a Web Worker and arrive as packed arrays. Where a worker can't run, the page generates the battlefield itself; the same seed gives the same battlefield either way.
 - **One set of rules for everyone:** player and enemies share the same `Tank` physics, weapons and collision code.
 - **Tunables live in config:** gameplay values are in `config/settings.ts`.
 - **No allocation in hot loops:**
@@ -328,7 +372,7 @@ npm test
 npm run coverage
 ```
 
-**611 tests in 16 files** cover:
+**904 tests in 39 files** cover:
 - **Damage:** hit zones, armour, kill detection.
 - **Collision:**
   - circle-vs-box and circle-vs-cylinder pushes
@@ -342,7 +386,16 @@ npm run coverage
 - **AI:** every state transition, steering and obstacle avoidance, reaction delay, never firing through obstacles.
 - **Tank physics:** speed caps, turning, slopes, terrain alignment, turret limits, muzzle position.
 - **World generation:** seeded determinism, obstacle placement rules, slope limits.
-- **Map coordinate conversion:** projection round-trips, zoom-at-cursor, grid labels.
+- **Water and bridges:**
+  - river courses whose surface never rises downstream, lake rims, banks and wet shores
+  - depth, wading speed, the blocked-water distance field against a brute-force check
+  - bridge placement, ramp grades, getting on and off decks, kerbs and parapets
+  - fords: placement clear of bridges, a wadeable bed, the deep river either side
+  - shells splashing into water and sight lines across it
+- **Navigation:** banks, regions and crossings; A* routes that never touch deep water; choosing a bridge or ford; right of way on decks; enemies crossing end to end.
+- **Battlefield loading:** packing a battlefield for the worker and rebuilding it exactly, out-of-order replies, falling back to the main thread.
+- **Rendering helpers:** water quality tiers, the lake chosen for reflection, the mirrored camera and its clipping, the reflection pass against a fake renderer, bridge and ford detail lines, automatic quality steps.
+- **Map coordinate conversion:** projection round-trips, zoom-at-cursor, grid labels, water shading, bridge and ford signs.
 - **Radar helpers.**
 - **Camera:** mode cycling, transitions, zoom limits.
 - **Aiming and input:** gun laying, gun-marker prediction, input mapping.
@@ -350,7 +403,7 @@ npm run coverage
 - **Audio:** sound generation against a fake AudioContext.
 - **Full simulation:** spawning, enemies engaging, killing a target, game over, determinism.
 
-Coverage over the simulation and logic modules is about **97% of statements and 93% of branches**. DOM and WebGL orchestration (`Game.ts`, `HudPresenter.ts` and the rendering views) is verified by browser smoke tests instead.
+Coverage over the simulation and logic modules is about **98% of statements and 94% of branches**. DOM and WebGL orchestration (`Game.ts`, `HudPresenter.ts` and the rendering views) is verified by browser smoke tests instead.
 
 ---
 
@@ -359,17 +412,19 @@ Coverage over the simulation and logic modules is about **97% of statements and 
 - **Browser coverage:** browser testing was done in an embedded Chromium-based browser. The code uses only standard WebGL 2, Web Audio, Pointer Lock and Gamepad APIs, but Firefox and Safari have **not** been manually tested.
 - **Audio:** sound is fully synthesised and tested against a fake AudioContext. Mix levels were set by design rather than tuned by ear.
 - **Gamepad:** the mapping assumes the standard layout and was not tested with physical hardware.
-- **AI navigation:** enemies use local steering rather than global path-finding. Long walls can briefly trap them, after which the automatic unstick manoeuvre recovers them.
+- **AI navigation:** enemies plan routes on a coarse grid only when water stands in their way; otherwise they steer locally. Long walls can briefly trap them, after which the automatic unstick manoeuvre recovers them.
+- **Water:** only the nearest lake in view is mirrored, and rivers never are. Bridge girders and truss lattices are scenery: shells and sight lines pass through them, while decks, parapets and piers do block them. Rivers never feed lakes.
+- **Huge maps:** the battlefield is generated off the main thread, but building its 3D scene still holds the game for about 0.2 s when it starts.
 - **Collision shapes:** these are approximations: oriented boxes for hulls, cylinders and boxes (some tapered) for obstacles. Bunker roofs are treated as a full box for shell collisions.
 - **Environment:** there is one environment (a night battlefield). Classic and Hybrid are visual modes rather than separate desert or arcade maps.
 - **Weapons:** there is a single cannon type; there are no power-ups or alternative ammunition.
 - **Radar-only intel ghosts:** in that map mode, last-known positions are only recorded while the map is open.
-- **Bundle:** the JavaScript is a single ~800 KB chunk (~216 KB gzipped), mostly Three.js.
+- **Bundle:** the JavaScript is a ~870 KB chunk (~242 KB gzipped), mostly Three.js, plus a 40 KB world generation worker.
 
 ## Possible future improvements
 
-- **AI:** path-finding on a coarse navigation grid, and enemy formations or coordinated flanking.
-- **Battlefields:** additional themes (desert, arcade plain), weather, and a day/night cycle.
+- **AI:** enemy formations or coordinated flanking, and route planning around walls as well as water.
+- **Battlefields:** additional themes (desert, arcade plain), weather, a day/night cycle, and rivers that flow through lakes.
 - **Weapons:** alternative ammunition (HE splash, high-velocity AP), power-ups, and a short-range machine gun.
 - **Effects:** track marks and damage decals on terrain.
 - **Controls:** rebindable keys, and touch controls for tablets.
@@ -382,22 +437,25 @@ Coverage over the simulation and logic modules is about **97% of statements and 
 
 **Implemented and verified:**
 - Seeded procedural terrain and obstacles.
+- Rivers, lakes and ponds with bridges, wading, splashes and wakes; enemy route planning across water; optional fords.
+- Water shading with quality tiers, wet banks, truss and girder bridges, and mirror reflections on lakes at High quality.
+- Battlefield generation in a Web Worker.
 - Player tank with inertia, slope-aware speed, terrain alignment, independent turret and gun, recoil, damage colouring and a destruction sequence (the turret is blown off and the wreck smoulders).
 - Three camera modes with smooth transitions, collision-aware chase distance, zoom and impact shake.
 - Ballistic aiming from the real muzzle.
 - Three enemy types driven by a state machine, with difficulty levels and escalating waves.
 - Scoring, statistics and best score.
 - Main and pause menu, settings, controls screen, game over and restart.
-- HUD, compact radar and tactical map.
+- HUD, compact radar and tactical map, with water, bridges and fords on both.
 - Three graphics modes switchable mid-game, with true hidden-line removal in Neon and Hybrid.
 - Pooled particle, debris, shockwave and light effects.
 - Synthesised positional audio.
-- Quality presets with automatic quality reduction, and a performance overlay.
+- Quality presets with automatic quality reduction (lake reflections first), and a performance overlay.
 - Mouse aiming and firing continue to work when Pointer Lock is unavailable.
 
 **Automated checks:**
 - `npm run typecheck`, `npm run lint` and `npm run build` succeed.
-- All 611 tests pass.
+- All 904 tests pass.
 
 **Browser smoke test** (dev server and production build):
 - Starts with no console errors; menu and HUD render.
@@ -408,6 +466,9 @@ Coverage over the simulation and logic modules is about **97% of statements and 
 - Hidden-line removal checked from the chase view, with one tank occluding another, and against Classic's see-through option.
 - Game over, restart, Escape-to-pause and resume work.
 - Window resizing (1600×900, 1024×640, narrow portrait) works.
+- Water and bridges render in all three modes; lake reflections appear at High quality in Neon and Hybrid only.
+- A Huge battlefield generates in the worker while the menu stays responsive.
+- A tank wades across a ford; fords show on the tactical map, the radar and the ground.
 - Production build runs.
 
 The development-only `window.__vt` handle exposes `debugSnapshot()` and `debugCommand()` for automated testing. It is not present in production builds.

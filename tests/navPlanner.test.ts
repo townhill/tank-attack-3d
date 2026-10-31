@@ -6,7 +6,7 @@ import { NAV, TANK_SPECS } from '../src/config/settings';
 import type { Faction } from '../src/config/settings';
 import { Tank } from '../src/entities/Tank';
 import type { World } from '../src/world/World';
-import { makeRiverWorld } from './waterFixtures';
+import { makeFordWorld, makeRiverWorld } from './waterFixtures';
 
 // The river runs north-south through x = 0; on these bridges `along` is x,
 // so a tank driving east travels in the +1 direction.
@@ -149,5 +149,46 @@ describe('PathFollower', () => {
     planner.beginTick([]);
     follower.steer(tank, 60, 90, planner, false, 0, wp);
     expect(wp.hold).toBe(false);
+  });
+});
+
+describe('NavPlanner fords', () => {
+  // A bridge at z = 100 and a ford near z = -45 on the north-south river.
+  const forded = makeFordWorld();
+  const ford = forded.fords[0]!;
+
+  it('wades across the ford when it is the better crossing, straight from bank to bank', () => {
+    const route = new Route();
+    const planner = freshPlanner(forded);
+    expect(planner.planLeg(tankAt(1, -70, ford.z - 10, Math.PI / 2, 'enemy', forded), 70, ford.z - 10, route)).toBe(true);
+    expect(route.bridgeId).toBe(-1);
+    const last = route.count - 1;
+    // The leg ends on the east bank, reached by a final stretch across the ford.
+    expect(route.xs[last]).toBeGreaterThan(ford.halfWidth);
+    expect(route.xs[last - 1]).toBeLessThan(-ford.halfWidth);
+    expect(Math.abs(route.zs[last]! - ford.z)).toBeLessThan(1);
+    expect(Math.abs(route.zs[last - 1]! - ford.z)).toBeLessThan(1);
+  });
+
+  it('still takes the bridge when that is nearer', () => {
+    const route = new Route();
+    expect(freshPlanner(forded).planLeg(tankAt(1, -60, 100, Math.PI / 2, 'enemy', forded), 60, 100, route)).toBe(true);
+    expect(route.bridgeId).toBe(0);
+  });
+
+  it('carries on to the goal\'s bank from inside the ford, whichever way the tank faces', () => {
+    for (const heading of [Math.PI / 2, -Math.PI / 2]) {
+      const route = new Route();
+      expect(freshPlanner(forded).planLeg(tankAt(1, ford.x - 3, ford.z, heading, 'enemy', forded), 80, ford.z, route)).toBe(true);
+      expect(route.count).toBe(1);
+      expect(route.xs[0]).toBeGreaterThan(ford.halfWidth);
+    }
+  });
+
+  it('carries on the way it faces from inside the ford when the goal is on neither bank', () => {
+    const route = new Route();
+    expect(freshPlanner(forded).planLeg(tankAt(1, ford.x + 2, ford.z, -Math.PI / 2, 'enemy', forded), ford.x, ford.z + 300, route)).toBe(true);
+    expect(route.count).toBe(1);
+    expect(route.xs[0]).toBeLessThan(-ford.halfWidth);
   });
 });

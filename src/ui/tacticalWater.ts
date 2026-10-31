@@ -1,20 +1,24 @@
 /**
  * Water features on the tactical map and radar: bridges drawn with the
- * standard bridge sign, and an index of shoreline segments so the radar can
- * draw the banks near the player each frame without scanning the whole map.
+ * standard bridge sign, fords with dashed lines across the river, and an
+ * index of shoreline segments so the radar can draw the banks near the
+ * player each frame without scanning the whole map.
  */
 import { PARAPET_THICKNESS } from '../world/Bridge';
 import { shorelineSegments } from '../world/shoreline';
+import type { Ford } from '../world/Water';
 import type { World } from '../world/World';
 import type { MapProjection } from './MapProjection';
 import type { TacticalTheme } from './tacticalTheme';
-import { drawBridgeSymbol } from './tacticalTheme';
+import { drawBridgeSymbol, drawFordSymbol } from './tacticalTheme';
 
 /** Cell size of the shoreline index (metres). */
 const SHORE_CELL = 50;
 /** Smallest bridge sign drawn, as half its length and half its width (px). */
 const MIN_HALF_LENGTH_PX = 5;
 const MIN_HALF_WIDTH_PX = 2;
+/** A ford sign reaches this far beyond each bank of the river (metres). */
+export const FORD_BANK_REACH = 4;
 
 /** Shoreline segments bucketed by the grid cell of their midpoints. */
 export class ShorelineIndex {
@@ -71,4 +75,21 @@ export function drawMapBridges(ctx: CanvasRenderingContext2D, theme: TacticalThe
     if (x < -cullMargin - halfLength || y < -cullMargin - halfLength || x > p.width + cullMargin + halfLength || y > p.height + cullMargin + halfLength) continue;
     drawBridgeSymbol(ctx, theme, x, y, halfLength, Math.max(MIN_HALF_WIDTH_PX, (b.halfWidth + PARAPET_THICKNESS) * p.scale), b.yaw);
   }
+}
+
+/** Draws every ford in view on the tactical map: the ford sign across the river, the smallest sign kept readable. */
+export function drawMapFords(ctx: CanvasRenderingContext2D, theme: TacticalTheme, world: World, projection: MapProjection, cullMargin: number): void {
+  const p = projection;
+  for (const f of world.fords) {
+    const x = p.worldToMapX(f.x);
+    const y = p.worldToMapY(f.z);
+    const halfAcross = Math.max(MIN_HALF_LENGTH_PX, (f.halfWidth + FORD_BANK_REACH) * p.scale);
+    if (x < -cullMargin - halfAcross || y < -cullMargin - halfAcross || x > p.width + cullMargin + halfAcross || y > p.height + cullMargin + halfAcross) continue;
+    drawFordSymbol(ctx, theme, x, y, halfAcross, Math.max(MIN_HALF_WIDTH_PX, f.halfLength * p.scale), fordSignAngle(f));
+  }
+}
+
+/** Turn of a ford's sign, as for a bridge deck: the crossing runs square to the flow, along (-tz, tx). */
+export function fordSignAngle(f: Ford): number {
+  return Math.atan2(-f.tz, -f.tx);
 }

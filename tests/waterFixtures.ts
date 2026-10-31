@@ -1,5 +1,6 @@
 /** Hand-built water and bridge fixtures shared by the water, bridge, navigation and simulation suites. */
 import { buildBridge, planCrossing } from '../src/world/BridgePlacer';
+import { placeFords } from '../src/world/FordPlacer';
 import type { Bridge } from '../src/world/Bridge';
 import { Terrain } from '../src/world/Terrain';
 import type { River, RiverSample } from '../src/world/Water';
@@ -44,6 +45,18 @@ export const RIVER_WORLD_PLAYABLE = 250;
  * crossed by an east-west bridge at each of `bridgeZs` (one at z = 0 by default).
  */
 export function makeRiverWorld(bridgeZs: readonly number[] = [0]): World {
+  return buildRiverWorld(bridgeZs, false);
+}
+
+/**
+ * The river world of `makeRiverWorld` with a ford placed as on a generated
+ * battlefield: with the default bridge at z = 100 it lies near z = -45.
+ */
+export function makeFordWorld(bridgeZs: readonly number[] = [100]): World {
+  return buildRiverWorld(bridgeZs, true);
+}
+
+function buildRiverWorld(bridgeZs: readonly number[], withFord: boolean): World {
   const terrain = new Terrain(300, 5);
   const river = makeStraightRiver(0, -300, 0, 300);
   const level = carveWater(terrain, [river], [], RIVER_WORLD_PLAYABLE);
@@ -52,8 +65,9 @@ export function makeRiverWorld(bridgeZs: readonly number[] = [0]): World {
     if (!crossing) throw new Error(`makeRiverWorld: no crossing at z = ${z}`);
     return buildBridge(terrain, level, crossing, id);
   });
+  const fords = withFord ? placeFords(terrain, [river], bridges, RIVER_WORLD_PLAYABLE) : [];
   const water = createWaterMap(terrain, level, bridges, RIVER_WORLD_PLAYABLE + 40);
-  return new World(1, terrain, [], RIVER_WORLD_PLAYABLE, { water, rivers: [river], lakes: [], bridges });
+  return new World(1, terrain, [], RIVER_WORLD_PLAYABLE, { water, rivers: [river], lakes: [], bridges, fords });
 }
 
 export interface Trough {

@@ -15,6 +15,8 @@ export interface UserSettings {
   difficulty: Difficulty;
   /** Battlefield size for the next new game. */
   mapSize: MapSize;
+  /** Whether new battlefields get a shallow ford across each river. */
+  fords: boolean;
   quality: QualityLevel;
   autoQuality: boolean;
   /** Bloom multiplier applied on top of each graphics mode's own bloom (0..2). */
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: Readonly<UserSettings> = {
   graphicsMode: 'neon',
   difficulty: 'normal',
   mapSize: 'standard',
+  fords: false,
   quality: 'high',
   autoQuality: true,
   bloomStrength: 1,
@@ -94,6 +97,7 @@ export function sanitizeSettings(raw: unknown): UserSettings {
     graphicsMode: pickEnum(src.graphicsMode, GRAPHICS_MODES, d.graphicsMode),
     difficulty: pickEnum(src.difficulty, DIFFICULTIES, d.difficulty),
     mapSize: pickEnum(src.mapSize, MAP_SIZE_IDS, d.mapSize),
+    fords: pickBoolean(src.fords, d.fords),
     quality: pickEnum(src.quality, QUALITY_LEVELS, d.quality),
     autoQuality: pickBoolean(src.autoQuality, d.autoQuality),
     bloomStrength: pickNumber(src.bloomStrength, 0, 2, d.bloomStrength),

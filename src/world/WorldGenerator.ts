@@ -9,7 +9,8 @@ import { SimplexNoise2D } from '../utils/noise';
 import { Random } from '../utils/random';
 import { createBridgeLocal, toBridgeLocal } from './Bridge';
 import { placeBridges } from './BridgePlacer';
-import { NavGrid } from './NavGrid';
+import { placeFords } from './FordPlacer';
+import { FORD_LINK_OFFSET, NavGrid } from './NavGrid';
 import type { Obstacle, ObstacleKind, ObstacleShape } from './Obstacle';
 import { boundRadiusOf, STOREY_HEIGHT, toWorldX, toWorldZ } from './Obstacle';
 import { Terrain } from './Terrain';
@@ -29,6 +30,8 @@ export interface WorldGenOptions {
   readonly rivers: number;
   readonly lakes: number;
   readonly ponds: number;
+  /** Whether each river gets a shallow ford; off keeps a seed's layout as it was before fords. */
+  readonly fords: boolean;
 }
 
 /**
@@ -36,7 +39,7 @@ export interface WorldGenOptions {
  * length, the boundary mountain margin keeps its width, rivers scale with the
  * side and obstacles, lakes and ponds with the area so density stays the same.
  */
-export function worldOptionsFor(size: MapSize): WorldGenOptions {
+export function worldOptionsFor(size: MapSize, fords = false): WorldGenOptions {
   const scale = MAP_SIZES[size].scale;
   const playableHalfSize = WORLD.playableHalfSize * scale;
   const area = scale * scale;
@@ -50,6 +53,7 @@ export function worldOptionsFor(size: MapSize): WorldGenOptions {
     rivers: WORLD.riverCount * scale,
     lakes: WORLD.lakeCount * area,
     ponds: WORLD.pondCount * area,
+    fords,
   };
 }
 
@@ -164,7 +168,7 @@ function pickStructure(rng: Random): StructureTemplate {
   return STRUCTURES[0]!;
 }
 
-/** True when an obstacle footprint of `radius` at (x, z) keeps clear of water, banks and bridge approaches. */
+/** True when an obstacle footprint of `radius` at (x, z) keeps clear of water, banks, bridge approaches and fords. */
 function isClearOfWater(features: WorldFeatures, x: number, z: number, radius: number): boolean {
   const water = features.water;
   if (water.blockedDistance(x, z) < radius + OBSTACLE_WATER_CLEARANCE || water.depthAt(x, z) > 0) return false;
@@ -177,6 +181,13 @@ function isClearOfWater(features: WorldFeatures, x: number, z: number, radius: n
     toBridgeLocal(b, x, z, local);
     const reach = radius + OBSTACLE_BRIDGE_CLEARANCE;
     if (Math.abs(local.lateral) < b.halfWidth + reach && Math.abs(local.along) < b.halfLength + b.rampLength + reach) return false;
+  }
+  // A ford's way across runs square to the flow, out to where it joins the ground on each bank.
+  for (const f of features.fords ?? []) {
+    const dx = x - f.x;
+    const dz = z - f.z;
+    const reach = radius + OBSTACLE_BRIDGE_CLEARANCE;
+    if (Math.abs(dx * f.tx + dz * f.tz) < f.halfLength + reach && Math.abs(dz * f.tx - dx * f.tz) < f.halfWidth + FORD_LINK_OFFSET + reach) return false;
   }
   return true;
 }
@@ -251,7 +262,8 @@ function generateObstacles(seed: number, terrain: Terrain, opts: WorldGenOptions
 }
 
 /**
- * Carves rivers, lakes and ponds into the terrain and bridges every river.
+ * Carves rivers, lakes and ponds into the terrain, bridges every river and,
+ * when asked, fords each one.
  * A layout that strands more than a sliver of the battlefield out of reach
  * of the player's spawn is undone and replanned: first with other rivers,
  * then with lakes alone, and finally with no water at all.
@@ -266,9 +278,10 @@ export function generateWaterFeatures(seed: number, terrain: Terrain, opts: Worl
     if (rivers.length + lakes.length === 0) break;
     const level = carveWater(terrain, rivers, lakes, half);
     const bridges = placeBridges(terrain, level, rivers, half);
+    const fords = opts.fords ? placeFords(terrain, rivers, bridges, half) : [];
     const water = createWaterMap(terrain, level, bridges, half + WATER_FIELD_MARGIN);
-    const nav = new NavGrid(half, water, bridges);
-    if (nav.regionShare(nav.regionAt(0, 0)) >= MIN_REACHABLE_SHARE) return { water, rivers, lakes, bridges };
+    const nav = new NavGrid(half, water, bridges, null, undefined, fords);
+    if (nav.regionShare(nav.regionAt(0, 0)) >= MIN_REACHABLE_SHARE) return { water, rivers, lakes, bridges, fords };
     terrain.heights.set(original);
   }
   return dryFeatures(terrain);

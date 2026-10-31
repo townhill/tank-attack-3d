@@ -24,8 +24,27 @@ export interface GraphicsModeSpec {
   readonly structure: ColourPair;
   readonly mountains: ColourPair;
   readonly bridge: ColourPair;
-  /** Water surface colour and opacity (1 = an opaque occluder), and the shoreline edge colour. */
-  readonly water: { readonly surface: number; readonly opacity: number; readonly shore: number };
+  readonly water: {
+    /** Surface colour over deep water, and the lighter tint over the shallows. */
+    readonly surface: number;
+    readonly shallow: number;
+    /** 1 = an opaque occluder. */
+    readonly opacity: number;
+    /** Shoreline edge colour; also the glow of the shallows and the colour of splashes and wakes. */
+    readonly shore: number;
+    /** Ripple lines drifting over the surface and their emissive strength. */
+    readonly ripple: number;
+    readonly rippleIntensity: number;
+    /** Emissive strength of the glow along the shallows. */
+    readonly glowIntensity: number;
+    /** Brightening of the surface seen at grazing angles. */
+    readonly sheen: number;
+    /** Colour the ground is multiplied by where the shore is wet, and the glow along the waterline in the shore colour. */
+    readonly wetTint: number;
+    readonly wetGlow: number;
+    /** Strength of the mirror image on lakes at High quality; 0 never reflects. */
+    readonly reflection: number;
+  };
   readonly terrain: {
     readonly low: number;
     readonly high: number;
@@ -87,7 +106,7 @@ export const GRAPHICS_MODE_SPECS: Readonly<Record<GraphicsModeId, GraphicsModeSp
     structure: { edge: CLASSIC_GREEN, solid: 0x000000 },
     mountains: { edge: 0x2bd957, solid: 0x000000 },
     bridge: { edge: CLASSIC_GREEN, solid: 0x000000 },
-    water: { surface: 0x000000, opacity: 1, shore: 0x7dffa0 },
+    water: { surface: 0x000000, shallow: 0x000000, opacity: 1, shore: 0x7dffa0, ripple: 0x1fa848, rippleIntensity: 0.45, glowIntensity: 0, sheen: 0, wetTint: 0xffffff, wetGlow: 0, reflection: 0 },
     terrain: {
       low: 0x000000,
       high: 0x000000,
@@ -141,7 +160,7 @@ export const GRAPHICS_MODE_SPECS: Readonly<Record<GraphicsModeId, GraphicsModeSp
     structure: { edge: 0x8a7dff, solid: 0x07081a },
     mountains: { edge: 0x2a4dff, solid: 0x02040e },
     bridge: { edge: 0xffb84d, solid: 0x0d0a06 },
-    water: { surface: 0x03121c, opacity: 0.85, shore: 0x2fd2ff },
+    water: { surface: 0x03121c, shallow: 0x0a2f3e, opacity: 0.85, shore: 0x2fd2ff, ripple: 0x1fb8e0, rippleIntensity: 0.6, glowIntensity: 0.22, sheen: 0.1, wetTint: 0x6f93a6, wetGlow: 0.22, reflection: 0.6 },
     terrain: {
       low: 0x03080b,
       high: 0x071419,
@@ -195,7 +214,7 @@ export const GRAPHICS_MODE_SPECS: Readonly<Record<GraphicsModeId, GraphicsModeSp
     structure: { edge: 0xa99dff, solid: 0x4c5070 },
     mountains: { edge: 0x4a6dff, solid: 0x111833 },
     bridge: { edge: 0xffc46b, solid: 0x6a6e78 },
-    water: { surface: 0x1d4a5c, opacity: 0.72, shore: 0x6fdcff },
+    water: { surface: 0x1d4a5c, shallow: 0x2f7a86, opacity: 0.72, shore: 0x6fdcff, ripple: 0x9fe8ff, rippleIntensity: 0.25, glowIntensity: 0.1, sheen: 0.12, wetTint: 0x48606a, wetGlow: 0.08, reflection: 0.45 },
     terrain: {
       low: 0x24352f,
       high: 0x55665a,

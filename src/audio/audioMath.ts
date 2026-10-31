@@ -5,7 +5,7 @@
  * Functions called every frame take an optional `out` object to avoid
  * per-frame allocation.
  */
-import { TANK_SPECS, type EnemyKind, type TankKind } from '../config/settings';
+import { TANK_SPECS, WATER, type EnemyKind, type TankKind } from '../config/settings';
 import { clamp } from '../utils/math';
 import type { AudioEnemy } from './types';
 
@@ -76,6 +76,37 @@ export function trackParams(
   out.gain = 0.42 * Math.sqrt(f);
   out.clatterRate = 4 + 26 * f;
   out.filterHz = 500 + 1800 * f;
+  return out;
+}
+
+export interface WadeParams {
+  gain: number;
+  /** Rate of the slosh against the hull (Hz). */
+  sloshRate: number;
+  /** Band-pass centre of the water noise (Hz). */
+  filterHz: number;
+  /** Factor on the track clatter, muffled by the water around the running gear. */
+  trackDamp: number;
+}
+
+/**
+ * Water sloshing round a wading hull: silent on dry ground and at a stop,
+ * louder and faster with speed, louder and duller as the water deepens up to
+ * the deepest a tank can wade. The water also muffles the track clatter.
+ */
+export function wadeParams(
+  speed: number,
+  maxSpeed: number,
+  depth: number,
+  out: WadeParams = { gain: 0, sloshRate: 0, filterHz: 0, trackDamp: 1 },
+): WadeParams {
+  const submerged = clamp(depth / WATER.impassableDepth, 0, 1);
+  const raw = maxSpeed > 0 ? clamp(Math.abs(speed) / maxSpeed, 0, 1) : 0;
+  const moving = submerged > 0 && raw >= 0.015 ? raw : 0;
+  out.gain = 0.5 * Math.sqrt(moving) * (0.4 + 0.6 * submerged);
+  out.sloshRate = 1.2 + 3.5 * moving;
+  out.filterHz = 900 + 500 * moving - 450 * submerged;
+  out.trackDamp = 1 - 0.6 * submerged;
   return out;
 }
 

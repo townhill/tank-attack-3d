@@ -13,7 +13,7 @@ import { fitScale, formatDistance, gridColumnLetter, gridLabel, MapProjection, n
 import type { Contact } from './tacticalData';
 import { ContactTracker, shadeRelief } from './tacticalData';
 import type { GraphicsModeId, LegendItem, TacticalTheme } from './tacticalTheme';
-import { drawMapBridges } from './tacticalWater';
+import { drawMapBridges, drawMapFords } from './tacticalWater';
 import {
   drawArrow,
   drawLegendSymbol,
@@ -202,9 +202,11 @@ export class TacticalMap {
   /** Switches to a new battlefield (new game with a new seed). */
   setWorld(world: World): void {
     if (world === this.world) return;
+    const fordsChanged = (world.fords.length > 0) !== (this.world.fords.length > 0);
     this.world = world;
     this.reliefDirty = true;
     this.contacts.clear();
+    if (fordsChanged) this.renderLegend();
     if (this.projection.width > 1) this.updateZoomLimits();
   }
 
@@ -249,6 +251,7 @@ export class TacticalMap {
     this.drawRelief();
     this.drawGrid();
     drawMapBridges(this.ctx, this.theme, this.world, this.projection, CULL_MARGIN);
+    drawMapFords(this.ctx, this.theme, this.world, this.projection, CULL_MARGIN);
     this.drawObstacles();
     this.drawBoundary();
     this.drawProjectiles(sim);
@@ -773,7 +776,9 @@ export class TacticalMap {
   private renderLegend(): void {
     const items: LegendItem[] = ['player', 'standard', 'heavy', 'scout'];
     if (this.intel === 'radar') items.push('ghost');
-    items.push('vector', 'wreck', 'shell', 'structure', 'building', 'rock', 'water', 'bridge', 'boundary');
+    items.push('vector', 'wreck', 'shell', 'structure', 'building', 'rock', 'water', 'bridge');
+    if (this.world.fords.length > 0) items.push('ford');
+    items.push('boundary');
     const dpr = this.dpr;
     const height = LEGEND_PAD * 2 + items.length * LEGEND_ROW;
     this.legend.style.height = `${height}px`;

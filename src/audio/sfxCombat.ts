@@ -89,6 +89,19 @@ export function terrainImpact(v: Voice, t: number, retro: boolean, level: number
   burst(v, t + 0.05, v.bank.white, 'bandpass', 2600, 0.8, 0.4, 0.1 * level);
 }
 
+/** Shell plunging into water: a hollow plop, the splash, then spray pattering back down. */
+export function waterImpact(v: Voice, t: number, retro: boolean, level: number): void {
+  if (retro) {
+    crushedBurst(v, t, 3200, 500, 0.35, 0.5 * level);
+    squareSweep(v, t, 440, 110, 4, 0.2, 0.12 * level);
+    return;
+  }
+  thump(v, t, 240 * detune(), 70, 0.18, 0.5 * level);
+  const splash = burst(v, t, v.bank.white, 'bandpass', 3000, 0.7, 0.55, 0.65 * level);
+  glide(splash.frequency, t, 3000, 700, 0.5);
+  burst(v, t + 0.25, v.bank.white, 'highpass', 3500, 0.5, 0.5, 0.15 * level);
+}
+
 /** Shell striking rock or a structure: metallic clang. */
 export function obstacleImpact(v: Voice, t: number, retro: boolean, level: number): void {
   if (retro) {

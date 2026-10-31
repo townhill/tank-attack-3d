@@ -7,7 +7,7 @@ import { NavGrid } from './NavGrid';
 import type { Obstacle } from './Obstacle';
 import { ObstacleGrid } from './ObstacleGrid';
 import type { HeightField, Terrain } from './Terrain';
-import type { Lake, River } from './Water';
+import type { Ford, Lake, River } from './Water';
 import { WaterMap } from './Water';
 
 /** What a static raycast struck; 'none' when the segment reached its end. */
@@ -24,28 +24,31 @@ export function createStaticHit(): StaticHit {
   return { t: NO_HIT, surface: 'none', obstacle: null };
 }
 
-/** Rivers, lakes and bridges laid over the terrain. */
+/** Rivers, lakes, bridges and fords laid over the terrain. */
 export interface WorldFeatures {
   readonly water: WaterMap;
   readonly rivers: readonly River[];
   readonly lakes: readonly Lake[];
   readonly bridges: readonly Bridge[];
+  /** Shallow river crossings; none when left out. */
+  readonly fords?: readonly Ford[];
 }
 
 export function dryFeatures(terrain: Terrain): WorldFeatures {
-  return { water: WaterMap.dry(terrain), rivers: [], lakes: [], bridges: [] };
+  return { water: WaterMap.dry(terrain), rivers: [], lakes: [], bridges: [], fords: [] };
 }
 
 /** The deck slab carries tracks out to the parapets' outer faces, beyond each kerb (metres). */
 const DECK_GROUND_MARGIN = PARAPET_THICKNESS;
 
-/** The static battlefield: terrain, water, bridges, obstacles and their spatial index. */
+/** The static battlefield: terrain, water, bridges, fords, obstacles and their spatial index. */
 export class World implements HeightField {
   readonly grid: ObstacleGrid;
   readonly water: WaterMap;
   readonly rivers: readonly River[];
   readonly lakes: readonly Lake[];
   readonly bridges: readonly Bridge[];
+  readonly fords: readonly Ford[];
   private readonly bridgeRadii: readonly number[];
   private readonly scratch: Obstacle[] = [];
   private readonly local = createBridgeLocal();
@@ -63,12 +66,13 @@ export class World implements HeightField {
     this.rivers = features.rivers;
     this.lakes = features.lakes;
     this.bridges = features.bridges;
+    this.fords = features.fords ?? [];
     this.bridgeRadii = features.bridges.map(bridgeBoundRadius);
   }
 
-  /** Navigation grid of the battlefield (water, bridges, obstacles and slopes), built on first use. */
+  /** Navigation grid of the battlefield (water, bridges, fords, obstacles and slopes), built on first use. */
   get nav(): NavGrid {
-    this.navGrid ??= new NavGrid(this.playableHalfSize, this.water, this.bridges, { terrain: this.terrain, obstacles: this.obstacles });
+    this.navGrid ??= new NavGrid(this.playableHalfSize, this.water, this.bridges, { terrain: this.terrain, obstacles: this.obstacles }, undefined, this.fords);
     return this.navGrid;
   }
 

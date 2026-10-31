@@ -78,6 +78,12 @@ const SECTIONS: readonly { readonly title: string; readonly controls: readonly C
     ],
   },
   {
+    title: 'Battlefield',
+    controls: [
+      { kind: 'toggle', key: 'fords', label: 'Shallow river fords (new battlefields)' },
+    ],
+  },
+  {
     title: 'Tactical',
     controls: [
       { kind: 'toggle', key: 'radarVisible', label: 'Show compact radar' },
@@ -108,6 +114,7 @@ export class Menu {
   private readonly settingsInputs = new Map<keyof UserSettings, HTMLInputElement | HTMLSelectElement>();
   private readonly settingsValues = new Map<keyof UserSettings, HTMLElement>();
   private readonly gameOverBody: HTMLElement;
+  private readonly status: HTMLElement;
 
   constructor(parent: HTMLElement, settings: UserSettings, private readonly callbacks: MenuCallbacks) {
     this.settings = { ...settings };
@@ -143,6 +150,10 @@ export class Menu {
     const goButtons = make('div', 'menu-buttons', gameover);
     this.button(goButtons, 'Restart (Enter)', () => { this.callbacks.onRestart(); }, 'start');
     this.button(goButtons, 'Main menu', () => { this.callbacks.onMainMenu(); }, 'back');
+
+    this.status = make('p', 'menu-status', this.root);
+    this.status.setAttribute('role', 'status');
+    this.status.setAttribute('aria-live', 'polite');
 
     this.screens = { main, settings: settingsScreen, controls, gameover };
     this.renderMain();
@@ -285,6 +296,12 @@ export class Menu {
     this.settings = { ...settings };
     this.syncInputs();
     if (this.screen === 'main') this.renderMain();
+  }
+
+  /** Shows a line of progress under the menu, such as a battlefield being generated; null clears it. */
+  setStatus(text: string | null): void {
+    this.status.textContent = text ?? '';
+    this.status.classList.toggle('show', text !== null);
   }
 
   showMain(canContinue: boolean, best: number): void {

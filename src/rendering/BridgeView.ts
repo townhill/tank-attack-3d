@@ -1,7 +1,11 @@
 /**
  * Bridges as faceted occluding solids with crease edges: a deck slab that
- * follows the road's arch, parapets along both kerbs, piers standing on the
- * riverbed and abutments at each bank. All bridges share one merged mesh.
+ * follows the road's arch, parapets along both kerbs, piers with cutwater
+ * noses standing on the riverbed and abutments at each bank, dressed with
+ * railings, lamp posts and a dashed centreline drawn as lines. The longest
+ * crossing on each river is a through truss; the others ride on solid plate
+ * girders with stiffened webs. All bridges share one merged mesh and one set
+ * of lines.
  */
 import type { BufferGeometry } from 'three';
 import { Group, Matrix4, Mesh, Vector3 } from 'three';
@@ -12,7 +16,9 @@ import { DECK_THICKNESS, deckHeightAt, PARAPET_HEIGHT, PARAPET_THICKNESS, PIER_H
 import { toWorldX, toWorldZ } from '../world/Obstacle';
 import type { Terrain } from '../world/Terrain';
 import type { World } from '../world/World';
-import { box, edgePositions, mergeParts, transformSegments } from './geometry';
+import type { BridgeStyle } from './bridgeDetail';
+import { bridgeDetailSegments, bridgeStyles, GIRDER_DEPTH, GIRDER_HALF_WEB, girderOffsets, pierFootprint } from './bridgeDetail';
+import { box, edgePositions, loft, mergeParts, SegmentList, transformSegments } from './geometry';
 import type { MaterialLibrary } from './Materials';
 
 /** Length of each straight deck segment approximating the arch (metres). */
@@ -30,17 +36,20 @@ export class BridgeView {
   constructor(world: World, materials: MaterialLibrary) {
     if (world.bridges.length === 0) return;
     const solids: BufferGeometry[] = [];
-    const edges: number[] = [];
+    const edges = new SegmentList();
     const matrix = new Matrix4();
     const axis = new Vector3(0, 1, 0);
-    for (const b of world.bridges) {
+    const styles = bridgeStyles(world.bridges);
+    world.bridges.forEach((b, k) => {
+      const style = styles[k]!;
       matrix.makeRotationAxis(axis, -b.yaw).setPosition(b.x, 0, b.z);
-      for (const piece of bridgePieces(b, world.terrain)) {
-        edges.push(...transformSegments(edgePositions(piece, EDGE_ANGLE), matrix));
+      for (const piece of bridgePieces(b, world.terrain, style)) {
+        edges.append(transformSegments(edgePositions(piece, EDGE_ANGLE), matrix));
         piece.applyMatrix4(matrix);
         solids.push(piece);
       }
-    }
+      edges.append(transformSegments(bridgeDetailSegments(b, style), matrix));
+    });
     const merged = mergeParts(solids);
     for (const s of solids) s.dispose();
     this.disposables.push(merged);
@@ -49,7 +58,7 @@ export class BridgeView {
     mesh.receiveShadow = true;
     mesh.name = 'bridges';
     this.group.add(mesh);
-    const lineGeo = new LineSegmentsGeometry().setPositions(new Float32Array(edges));
+    const lineGeo = new LineSegmentsGeometry().setPositions(edges.toFloat32());
     this.disposables.push(lineGeo);
     this.group.add(new LineSegments2(lineGeo, materials.edges.bridge));
   }
@@ -61,7 +70,7 @@ export class BridgeView {
 }
 
 /** Solid pieces of one bridge in its own frame: x across the deck, z along it, y in world height. */
-function bridgePieces(b: Bridge, terrain: Terrain): BufferGeometry[] {
+function bridgePieces(b: Bridge, terrain: Terrain, style: BridgeStyle): BufferGeometry[] {
   const pieces: BufferGeometry[] = [];
   const outer = b.halfWidth + PARAPET_THICKNESS;
   const segments = Math.max(2, Math.ceil((2 * b.halfLength) / DECK_SEGMENT));
@@ -72,11 +81,17 @@ function bridgePieces(b: Bridge, terrain: Terrain): BufferGeometry[] {
     pieces.push(box(-outer, road - DECK_THICKNESS, z0, outer, road, z1));
     pieces.push(box(-outer, road, z0, -b.halfWidth, road + PARAPET_HEIGHT, z1));
     pieces.push(box(b.halfWidth, road, z0, outer, road + PARAPET_HEIGHT, z1));
+    if (style !== 'girder') continue;
+    const underside = road - DECK_THICKNESS;
+    for (const x of girderOffsets(b)) {
+      pieces.push(box(x - GIRDER_HALF_WEB, underside - GIRDER_DEPTH, z0, x + GIRDER_HALF_WEB, underside, z1));
+    }
   }
-  const pierHalfWidth = b.halfWidth - PIER_INSET;
+  const footprint = pierFootprint(b.halfWidth - PIER_INSET, PIER_HALF_ALONG);
   for (const along of b.piers) {
     const underside = deckHeightAt(b, along) - DECK_THICKNESS;
-    pieces.push(box(-pierHalfWidth, b.footY, along - PIER_HALF_ALONG, pierHalfWidth, underside, along + PIER_HALF_ALONG));
+    const pier = footprint.map(([x, z]) => [x, z + along] as const);
+    pieces.push(loft(pier, pier, b.footY, underside));
   }
   for (const side of [-1, 1]) {
     const near = side * (b.halfSpan - ABUTMENT_DEPTH);
