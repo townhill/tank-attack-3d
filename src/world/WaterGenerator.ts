@@ -4,6 +4,8 @@
  * hollows. Carving then cuts channels and bowls, shapes the banks, lowers the
  * valley sides and records the water level of every wet vertex.
  */
+import type { RiverValley } from '../config/settings';
+import { TERRAIN_TYPES } from '../config/settings';
 import { MinHeap } from '../utils/heap';
 import { clamp, lerp, smoothstep } from '../utils/math';
 import { SimplexNoise2D } from '../utils/noise';
@@ -23,8 +25,7 @@ export const SPAWN_WATER_CLEARANCE = 160;
 const VALLEY_SLOPE = 0.4;
 /** ...and the gorge walls where a river cuts through the boundary mountains. */
 const GORGE_SLOPE = 1.2;
-/** Ground further than this beyond a bank top is never touched (metres). */
-const RIVER_REACH = 120;
+/** Ground further than this beyond a lake's bank top is never touched (metres); rivers take theirs from the valley. */
 const LAKE_REACH = 80;
 
 /** Spacing of the coarse grid river courses are planned on (metres). */
@@ -492,21 +493,25 @@ function isNearLake(lakes: readonly Lake[], x: number, z: number, reach: number)
 /**
  * Carves every river and lake into the terrain heights and returns the water
  * level per vertex: set on wet vertices and their neighbours, NaN elsewhere.
+ * Rivers cut their valleys as `valley` describes; Gentle's has no bench.
  */
-export function carveWater(terrain: Terrain, rivers: readonly River[], lakes: readonly Lake[], playableHalfSize: number): Float32Array {
+export function carveWater(
+  terrain: Terrain, rivers: readonly River[], lakes: readonly Lake[], playableHalfSize: number,
+  valley: RiverValley = TERRAIN_TYPES.gentle.profile.riverValley,
+): Float32Array {
   const level = new Float32Array(terrain.heights.length).fill(Number.NaN);
-  for (const river of rivers) carveRiver(terrain, river, level, playableHalfSize);
+  for (const river of rivers) carveRiver(terrain, river, level, playableHalfSize, valley);
   for (const lake of lakes) carveLake(terrain, lake, level, playableHalfSize);
   return dilateLevels(terrain, level);
 }
 
-function carveRiver(terrain: Terrain, river: River, level: Float32Array, playableHalfSize: number): void {
+function carveRiver(terrain: Terrain, river: River, level: Float32Array, playableHalfSize: number, valley: RiverValley): void {
   const samples = river.samples;
   const res = terrain.resolution;
   const heights = terrain.heights;
   let widest = 0;
   for (const p of samples) widest = Math.max(widest, p.halfWidth);
-  const reach = widest + BANK_WIDTH + RIVER_REACH;
+  const reach = widest + BANK_WIDTH + valley.reach;
   const nearest = new Float32Array(res * res).fill(Infinity);
   const along = new Float32Array(res * res);
   for (let k = 0; k + 1 < samples.length; k++) {
@@ -549,7 +554,7 @@ function carveRiver(terrain: Terrain, river: River, level: Float32Array, playabl
       heights[v] = Math.min(orig, bed);
       raiseLevel(level, v, surface);
     } else {
-      heights[v] = shoreHeight(orig, d - halfWidth, surface, sideSlope(x, z, playableHalfSize));
+      heights[v] = shoreHeight(orig, d - halfWidth, surface, sideSlope(x, z, playableHalfSize), valley);
     }
   }
 }
@@ -589,10 +594,18 @@ function carveLake(terrain: Terrain, lake: Lake, level: Float32Array, playableHa
  * `slope`, cutting a valley side into higher ground and building up the
  * outer face of a levee over lower ground.
  */
-function shoreHeight(orig: number, e: number, surface: number, slope: number): number {
+/**
+ * Ground `e` metres beyond the waterline: the bank, then natural ground held
+ * within walls of `slope` either side of the bank top. A valley bench, when
+ * there is one, rises gently before the walls take over.
+ */
+function shoreHeight(orig: number, e: number, surface: number, slope: number, valley: RiverValley | null = null): number {
   if (e <= BANK_WIDTH) return surface + BANK_FREEBOARD * smoothstep(0, BANK_WIDTH, e);
   const top = surface + BANK_FREEBOARD;
-  const spread = slope * (e - BANK_WIDTH);
+  const run = e - BANK_WIDTH;
+  const spread = valley && valley.benchWidth > 0
+    ? valley.benchSlope * Math.min(run, valley.benchWidth) + slope * Math.max(0, run - valley.benchWidth)
+    : slope * run;
   return clamp(orig, top - spread, top + spread);
 }
 

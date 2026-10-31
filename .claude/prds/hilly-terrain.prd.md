@@ -24,6 +24,15 @@ Players of VECTOR TANKS fight on gentle rolling ground. Hills reach only about �
   | Huge | 36.5 m | 59.2% | 41.7% | 6.1% | 75.8% | 1.5 of 3 | 1311 ms (Gentle 657) |
 
   Meeting the cover target cost about 6% steep ground; the user chose that over a 5% steep limit with about 52% cover (2026-10-31). Rivers often fail to fit Hilly ground, which also doubles generation time through retried layouts; that is milestone 2.
+- Hilly after milestone 2 (valley benches for rivers, re-tuned detail and ridges; same survey and seeds, water on):
+
+  | Size | Hidden, all ranges | Hidden, 60–150 m | Too steep | Spawnable | Rivers placed | Bridges per river | Generation vs Gentle, same run |
+  |---|---|---|---|---|---|---|---|
+  | Standard | 56.5% | 41.1% | 6.1% | 75.6% | 1 of 1 | 3.0 | 1.24× |
+  | Large | 57.9% | 42.6% | 6.4% | 72.6% | 2 of 2 | 5.9 | 1.29× |
+  | Huge | 57.5% | 40.6% | 6.2% | 73.9% | 3 of 3 | 9.0 | 1.30× |
+
+  The Standard cover target (56.4%) is met with 0.1 points to spare. Every first-wave enemy on the tested Hilly seeds (one per size, 3 enemies each) closed to fighting range within 75 s, and none got stuck; Gentle managed 2 of 3 on Standard. Fords cross every river on Hilly too.
 - Assumption: other players feel the same lack of cover. Needs validation via playtests of a Hilly prototype.
 
 ## Users
@@ -64,13 +73,13 @@ On Hilly, everything that works on Gentle keeps working at every map size: river
 | # | Milestone | Outcome | Status | Plan |
 |---|---|---|---|---|
 | 1 | Terrain choice | Players can pick Gentle or Hilly, and Gentle is unchanged. Hilly shows taller hills and valleys with a working spawn and obstacles. Its cover is measured against the Gentle baseline, and that sets the target. | in-progress | .claude/plans/hilly-terrain.plan.md |
-| 2 | Hilly fully playable | Water, bridges, fords and enemy routes all work on Hilly at every map size, with the same reachability guarantee as Gentle. | pending | — |
+| 2 | Hilly fully playable | Water, bridges, fords and enemy routes all work on Hilly at every map size, with the same reachability guarantee as Gentle. | in-progress | .claude/plans/hilly-terrain-m2.plan.md |
 | 3 | Tuned and shipped | Slopes and relief are tuned from playtests until both cover metrics are met. README and screenshots are updated. | pending | — |
 
 ## Open Questions
 - [ ] **How steep is too steep?** Tanks slow down on climbs and enemies avoid steep ground. What height and slope keep fights moving and every area reachable? Needs validation via playtests.
 - [ ] **Keep the spawn level on Hilly?** The start area is flattened today. Keeping it flat is safe; a hilly start would give cover from the first second.
-- [ ] **Water on Hilly maps.** Should rivers follow the new valleys? How often will a Hilly seed fail to fit its rivers, lakes and bridges and fall back to fewer water features?
+- [x] **Water on Hilly maps.** Answered in milestone 2. Rivers already follow the low ground; they failed because bridge ramps could not climb out of the deep cuttings they carve through tall hills. On Hilly, each river now carves a gentle bench beside its banks, and every tested seed keeps all its rivers, with bridges and fords. A few lakes still find no site flat enough (2.8 of 3 on Standard).
 
 ## Risks
 | Risk | Likelihood | Impact | Mitigation |

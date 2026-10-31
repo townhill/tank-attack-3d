@@ -117,6 +117,19 @@ describe('fords on generated battlefields', () => {
     expect(generateWorld(2, worldOptionsFor('standard', true)).fords).toEqual(generateWorld(2, worldOptionsFor('standard', true)).fords);
   }, GENERATION_TIMEOUT);
 
+  it('give every river a wadeable crossing on Hilly battlefields too', () => {
+    const cases = [...[2, 3, 7].map((seed) => ({ seed, size: 'standard' as const })), { seed: 7, size: 'large' as const }];
+    for (const { seed, size } of cases) {
+      const world = generateWorld(seed, worldOptionsFor(size, true, 'hilly'));
+      expect(world.rivers.length, `${size} seed ${seed}`).toBeGreaterThan(0);
+      expect(world.fords, `${size} seed ${seed}`).toHaveLength(world.rivers.length);
+      for (const ford of world.fords) {
+        expect(world.water.isBlocked(ford.x, ford.z)).toBe(false);
+        expect(world.water.depthAt(ford.x, ford.z)).toBeGreaterThan(0);
+      }
+    }
+  }, GENERATION_TIMEOUT);
+
   it('keep obstacles off the way across', () => {
     // Large seed 51 once had a rock beside its ford.
     for (const [seed, size] of [[51, 'large'], [3, 'standard']] as const) {

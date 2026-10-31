@@ -56,6 +56,17 @@ describe('Hilly terrain', () => {
     hilly = sample('hilly');
   });
 
+  it('keeps every river, each bridged at least twice, at Standard and Large sizes', () => {
+    const large = generateWorld(7, worldOptionsFor('large', false, 'hilly'));
+    const cases = [...hilly.map((s, k) => ({ name: `standard seed ${SEEDS[k]!}`, world: s.world, wanted: 1 })), { name: 'large seed 7', world: large, wanted: 2 }];
+    for (const { name, world, wanted } of cases) {
+      expect(world.rivers.length, name).toBe(wanted);
+      for (const river of world.rivers) {
+        expect(world.bridges.filter((b) => b.riverId === river.id).length, `${name} river ${river.id}`).toBeGreaterThanOrEqual(2);
+      }
+    }
+  });
+
   it('has at least twice the relief of Gentle', () => {
     expect(meanOf(hilly, (s) => s.relief)).toBeGreaterThanOrEqual(2 * meanOf(gentle, (s) => s.relief));
   });

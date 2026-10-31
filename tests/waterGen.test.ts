@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BRIDGE, WATER } from '../src/config/settings';
+import { BRIDGE, TERRAIN_TYPES, WATER } from '../src/config/settings';
 import { createBridgeLocal, deckHeightAt, toBridgeLocal } from '../src/world/Bridge';
 import { buildBridge, placeBridges, planCrossing } from '../src/world/BridgePlacer';
 import { Terrain } from '../src/world/Terrain';
@@ -49,6 +49,43 @@ describe('carveWater: a straight river on flat ground', () => {
       if (water.isBlocked(x, 0)) continue;
       expect(terrain.slopeAt(x, 0)).toBeLessThan(0.5);
     }
+  });
+});
+
+describe('carveWater: a river cut 42 m deep through high flat ground', () => {
+  // Half width 14 puts the bank tops 20 m out; the ground stands 42 m above the water.
+  const GROUND = 40;
+  const cutting = (): { terrain: Terrain; river: ReturnType<typeof makeStraightRiver> } => {
+    const terrain = new Terrain(300, 5);
+    terrain.heights.fill(GROUND);
+    return { terrain, river: makeStraightRiver(0, -300, 0, 300, { halfWidth: 14, depth: 3, surfaceY: -2 }) };
+  };
+  const hilly = TERRAIN_TYPES.hilly.profile.riverValley;
+  const bench = cutting();
+  const benchLevel = carveWater(bench.terrain, [bench.river], [], 250, hilly);
+  const top = -2 + BANK_FREEBOARD;
+
+  it('rises no steeper than the bench slope across a bench beside each bank', () => {
+    expect(bench.terrain.heightAt(14 + BANK_WIDTH, 0)).toBeCloseTo(top, 5);
+    for (let x = 14 + BANK_WIDTH + 3; x <= 14 + BANK_WIDTH + hilly.benchWidth - 3; x += 1) {
+      expect(bench.terrain.slopeAt(x, 0)).toBeLessThanOrEqual(hilly.benchSlope + 1e-3);
+      expect(bench.terrain.slopeAt(-x, 0)).toBeLessThanOrEqual(hilly.benchSlope + 1e-3);
+    }
+    expect(bench.terrain.heightAt(14 + BANK_WIDTH + hilly.benchWidth, 0)).toBeCloseTo(top + hilly.benchSlope * hilly.benchWidth, 4);
+  });
+
+  it('climbs the valley walls beyond the bench and meets the natural ground inside the carving reach', () => {
+    for (let x = 14 + BANK_WIDTH + hilly.benchWidth + 3; x <= 14 + BANK_WIDTH + hilly.reach; x += 1) {
+      expect(bench.terrain.slopeAt(x, 0)).toBeLessThan(0.41);
+    }
+    expect(bench.terrain.heightAt(14 + BANK_WIDTH + hilly.reach - 5, 0)).toBe(GROUND);
+  });
+
+  it('lets bridge ramps climb out of the cutting, which plain valley walls do not', () => {
+    expect(placeBridges(bench.terrain, benchLevel, [bench.river], 250).length).toBeGreaterThan(0);
+    const plain = cutting();
+    const plainLevel = carveWater(plain.terrain, [plain.river], [], 250);
+    expect(placeBridges(plain.terrain, plainLevel, [plain.river], 250)).toEqual([]);
   });
 });
 

@@ -23,10 +23,13 @@ const GOLDEN: readonly GoldenWorld[] = [
   { seed: 3, size: 'huge', fords: false, fingerprint: 2959476597 },
 ];
 
+/** A Huge battlefield can take over five seconds to generate under coverage instrumentation (ms). */
+const GENERATION_TIMEOUT = 30_000;
+
 describe('Gentle terrain', () => {
   for (const g of GOLDEN) {
     it(`generates the same ${g.size} battlefield for seed ${g.seed}${g.fords ? ' with fords' : ''} as before terrain types`, () => {
       expect(worldFingerprint(generateWorld(g.seed, worldOptionsFor(g.size, g.fords)))).toBe(g.fingerprint);
-    });
+    }, GENERATION_TIMEOUT);
   }
 });

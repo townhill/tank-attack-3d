@@ -298,7 +298,7 @@ export function generateWaterFeatures(seed: number, terrain: Terrain, opts: Worl
     const rivers = planRivers(layoutSeed, terrain, half, attempt < RIVER_LAYOUT_ATTEMPTS ? opts.rivers : 0);
     const lakes = planLakes(layoutSeed, terrain, half, rivers, opts.lakes, opts.ponds);
     if (rivers.length + lakes.length === 0) break;
-    const level = carveWater(terrain, rivers, lakes, half);
+    const level = carveWater(terrain, rivers, lakes, half, opts.terrainProfile.riverValley);
     const bridges = placeBridges(terrain, level, rivers, half);
     const fords = opts.fords ? placeFords(terrain, rivers, bridges, half) : [];
     const water = createWaterMap(terrain, level, bridges, half + WATER_FIELD_MARGIN);

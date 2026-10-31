@@ -29,14 +29,22 @@ const VARIANTS: readonly Variant[] = [
 ];
 
 const enabled = import.meta.env.COVER_REPORT === '1';
+/** Hilly may take at most this multiple of Gentle's generation time; compared within one run, as load swings timings. */
+const MAX_GEN_RATIO = 1.5;
+const SIZE_IDS: readonly MapSize[] = ['standard', 'large', 'huge'];
 
 type Row = Record<string, string>;
+
+interface Measured {
+  readonly row: Row;
+  readonly genMs: number;
+}
 
 function mean(values: readonly number[]): number {
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
-function measure(variant: Variant, size: MapSize): Row {
+function measure(variant: Variant, size: MapSize): Measured {
   const opts = variant.options(size);
   const surveys: BattlefieldSurvey[] = [];
   const times: number[] = [];
@@ -55,11 +63,12 @@ function measure(variant: Variant, size: MapSize): Row {
   const avg = (pick: (s: BattlefieldSurvey) => number): number => mean(surveys.map(pick));
   const pct = (pick: (s: BattlefieldSurvey) => number): string => `${(100 * avg(pick)).toFixed(1)}%`;
   const n = SEEDS[size].length;
-  return {
+  const genMs = mean(times);
+  const row: Row = {
     terrain: variant.name,
     size,
     seeds: String(n),
-    genMs: mean(times).toFixed(0),
+    genMs: genMs.toFixed(0),
     relief: `${avg((s) => s.relief).toFixed(1)} m`,
     hidden: pct((s) => s.hiddenShare),
     near: pct((s) => s.hiddenNear),
@@ -73,7 +82,9 @@ function measure(variant: Variant, size: MapSize): Row {
     rivers: `${(rivers / n).toFixed(1)}/${opts.rivers}`,
     lakes: `${(lakes / n).toFixed(1)}/${opts.lakes + opts.ponds}`,
     bridges: (bridges / n).toFixed(1),
+    perRiver: rivers > 0 ? (bridges / rivers).toFixed(1) : '-',
   };
+  return { row, genMs };
 }
 
 function formatTable(rows: readonly Row[]): string {
@@ -84,12 +95,20 @@ function formatTable(rows: readonly Row[]): string {
 }
 
 describe.runIf(enabled)('Cover report', () => {
-  it('surveys every terrain type at every map size', () => {
+  it('surveys every terrain type at every map size, keeping Hilly within its generation-time budget', () => {
+    const gentleMs = new Map<MapSize, number>();
     const rows: Row[] = [];
+    const ratios: number[] = [];
     for (const variant of VARIANTS) {
-      for (const size of ['standard', 'large', 'huge'] as const) rows.push(measure(variant, size));
+      for (const size of SIZE_IDS) {
+        const { row, genMs } = measure(variant, size);
+        if (variant.name === 'gentle') gentleMs.set(size, genMs);
+        const ratio = genMs / gentleMs.get(size)!;
+        if (variant.name !== 'gentle') ratios.push(ratio);
+        rows.push({ ...row, vsGentle: `${ratio.toFixed(2)}x` });
+      }
     }
     console.info(`\n${formatTable(rows)}\n`);
-    expect(rows.length).toBe(VARIANTS.length * 3);
+    for (const ratio of ratios) expect(ratio).toBeLessThanOrEqual(MAX_GEN_RATIO);
   }, 300_000);
 });

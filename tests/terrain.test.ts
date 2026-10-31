@@ -7,6 +7,9 @@ import { Terrain } from '../src/world/Terrain';
 import { DEFAULT_WORLD_OPTIONS, generateWorld, MAX_BUILDING_SLOPE, worldOptionsFor } from '../src/world/WorldGenerator';
 import { Random } from '../src/utils/random';
 
+/** A Huge battlefield can take over five seconds to generate under coverage instrumentation (ms). */
+const GENERATION_TIMEOUT = 30_000;
+
 /** Terrain whose height is the plane `slopeX * x + slopeZ * z`. */
 function makeRamp(slopeX: number, slopeZ: number, halfSize = 50, cellSize = 5): Terrain {
   const terrain = new Terrain(halfSize, cellSize);
@@ -409,7 +412,7 @@ describe('generateWorld', () => {
       for (const [x, z] of [[edge, 0], [-edge, 0], [0, edge], [0, -edge]] as const) {
         expect(huge.heightAt(x, z)).toBeGreaterThan(25);
       }
-    });
+    }, GENERATION_TIMEOUT);
   });
 
   it('honours custom generation options', () => {
