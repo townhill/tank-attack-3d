@@ -53,6 +53,17 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings({ mapSize: 3 }).mapSize).toBe('standard');
   });
 
+  it('defaults to gentle terrain and keeps a valid terrain type', () => {
+    expect(DEFAULT_SETTINGS.terrain).toBe('gentle');
+    expect(sanitizeSettings({ terrain: 'hilly' }).terrain).toBe('hilly');
+  });
+
+  it('falls back to gentle terrain for missing or unknown values', () => {
+    expect(sanitizeSettings({}).terrain).toBe('gentle');
+    expect(sanitizeSettings({ terrain: 'mountainous' }).terrain).toBe('gentle');
+    expect(sanitizeSettings({ terrain: 1 }).terrain).toBe('gentle');
+  });
+
   it('clamps numbers into range and rejects non-finite numbers', () => {
     const s = sanitizeSettings({ fov: 500, masterVolume: -2, mouseSensitivity: Number.NaN, bloomStrength: Number.POSITIVE_INFINITY });
     expect(s.fov).toBe(100);

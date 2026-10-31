@@ -5,8 +5,8 @@
 import { Vector3 } from 'three';
 import type { AudioEnemy, AudioFrame } from '../audio/AudioManager';
 import { AudioManager } from '../audio/AudioManager';
-import type { MapSize } from '../config/settings';
-import { DIFFICULTY, PROJECTILE, SIM_DT, TANK_SPECS } from '../config/settings';
+import type { MapSize, TerrainType } from '../config/settings';
+import { DIFFICULTY, PROJECTILE, SIM_DT, TANK_SPECS, TERRAIN_TYPES } from '../config/settings';
 import type { UserSettings } from '../config/userSettings';
 import { browserStorage, GRAPHICS_MODES, SettingsStore } from '../config/userSettings';
 import type { Tank } from '../entities/Tank';
@@ -78,6 +78,8 @@ export class Game {
   private mapSize: MapSize;
   /** Whether the current world was generated with fords (settings may since have changed). */
   private worldFords: boolean;
+  /** The terrain type the current world was generated with (settings may since have changed). */
+  private worldTerrain: TerrainType;
   private readonly worldView: WorldView;
   private readonly cameraState = new CameraState('third');
   private readonly aim = new AimState();
@@ -124,6 +126,7 @@ export class Game {
     this.seed = seedFromUrl() ?? randomSeed();
     this.mapSize = this.settings.mapSize;
     this.worldFords = this.settings.fords;
+    this.worldTerrain = this.settings.terrain;
     this.sim = this.createAttractSimulation();
     this.worldView = new WorldView(this.renderer, this.sim.world, PROJECTILE.poolSize, this.rng);
     this.cameraManager = new CameraManager(this.renderer.camera, this.sim.world, this.rng);
@@ -173,8 +176,8 @@ export class Game {
 
   /** The menu's background battle, on `world` when given, else on the battlefield it generates. */
   private createAttractSimulation(world?: World): Simulation {
-    const { seed, mapSize, worldFords: fords } = this;
-    return new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, fords, world, firstWaveDelay: Number.POSITIVE_INFINITY });
+    const { seed, mapSize, worldFords: fords, worldTerrain: terrain } = this;
+    return new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, fords, terrain, world, firstWaveDelay: Number.POSITIVE_INFINITY });
   }
 
   /** Drops any battlefield still being generated, so its arrival starts nothing. */
@@ -278,8 +281,8 @@ export class Game {
   // ---------------------------------------------------------------- states
 
   /**
-   * Starts a game on the battlefield for `seed` at the chosen map size, with
-   * fords if they are turned on. The
+   * Starts a game on the battlefield for `seed` at the chosen map size and
+   * terrain type, with fords if they are turned on. The
    * current battlefield is reused when it matches; otherwise a new one is
    * generated off the main thread while the menu stays up, and the game
    * starts when it arrives unless another start was asked for meanwhile.
@@ -287,18 +290,19 @@ export class Game {
   private startNewGame(seed: number): void {
     const mapSize = this.settings.mapSize;
     const fords = this.settings.fords;
+    const terrain = this.settings.terrain;
     const request = ++this.worldRequest;
-    if (seed === this.sim.world.seed && mapSize === this.mapSize && fords === this.worldFords) {
+    if (seed === this.sim.world.seed && mapSize === this.mapSize && fords === this.worldFords && terrain === this.worldTerrain) {
       this.menu.setStatus(null);
-      this.beginGame(seed, mapSize, fords, this.sim.world);
+      this.beginGame(seed, mapSize, fords, terrain, this.sim.world);
       return;
     }
     this.menu.setStatus('GENERATING BATTLEFIELD…');
-    this.worldLoader.load(seed, mapSize, fords).then(
+    this.worldLoader.load(seed, mapSize, fords, terrain).then(
       (world) => {
         if (request !== this.worldRequest) return;
         this.menu.setStatus(null);
-        this.beginGame(seed, mapSize, fords, world);
+        this.beginGame(seed, mapSize, fords, terrain, world);
       },
       (error: unknown) => {
         console.error('Battlefield generation failed', error);
@@ -307,12 +311,13 @@ export class Game {
     );
   }
 
-  /** Starts play on `world`, the battlefield for `seed` at `mapSize`, with or without `fords`. */
-  private beginGame(seed: number, mapSize: MapSize, fords: boolean, world: World): void {
+  /** Starts play on `world`, the battlefield for `seed` at `mapSize` with `terrain` ground, with or without `fords`. */
+  private beginGame(seed: number, mapSize: MapSize, fords: boolean, terrain: TerrainType, world: World): void {
     const sameWorld = world === this.sim.world;
     this.seed = seed;
     this.mapSize = mapSize;
     this.worldFords = fords;
+    this.worldTerrain = terrain;
     this.sim = new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, world });
     if (!sameWorld) {
       this.worldView.setWorld(this.sim.world);
@@ -335,7 +340,8 @@ export class Game {
     this.audio.stopAll();
     this.audio.setPaused(false);
     this.updateRadarVisibility();
-    const banner = `${DIFFICULTY[this.settings.difficulty].label}  ·  ${mapSizeLabel(mapSize)}  ·  BATTLEFIELD ${seed}${fords ? '  ·  FORDS' : ''}`;
+    const hilly = terrain === 'hilly' ? `  ·  ${TERRAIN_TYPES.hilly.label}` : '';
+    const banner = `${DIFFICULTY[this.settings.difficulty].label}  ·  ${mapSizeLabel(mapSize)}  ·  BATTLEFIELD ${seed}${hilly}${fords ? '  ·  FORDS' : ''}`;
     this.hud.showBanner('ENGAGE', banner.toUpperCase(), 2.4);
     void this.requestLock();
   }
@@ -393,6 +399,7 @@ export class Game {
       accuracy: accuracy(stats.shotsFired, stats.hits),
       difficulty: DIFFICULTY[this.sim.difficulty].label,
       mapSize: mapSizeLabel(this.mapSize),
+      terrain: TERRAIN_TYPES[this.worldTerrain].label,
       seed: this.seed,
     };
     this.menu.showGameOver(summary);
@@ -723,6 +730,7 @@ export class Game {
       quality: this.settings.quality,
       seed: this.seed,
       mapSize: this.mapSize,
+      terrain: this.worldTerrain,
       playableHalfSize: this.sim.world.playableHalfSize,
       player: { x: p.x, z: p.z, heading: p.heading, speed: p.speed, health: p.health, turretYaw: p.turretYaw, gunPitch: p.gunPitch, alive: p.alive },
       enemies: this.sim.enemies.map((e) => ({ id: e.tank.id, kind: e.kind, x: e.tank.x, z: e.tank.z, alive: e.tank.alive, state: e.controller.state })),

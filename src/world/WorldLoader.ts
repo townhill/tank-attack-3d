@@ -5,7 +5,7 @@
  * worker can be started, or one fails, the world is generated on the main
  * thread instead; either way the same seed gives the same battlefield.
  */
-import type { MapSize } from '../config/settings';
+import type { MapSize, TerrainType } from '../config/settings';
 import type { World } from './World';
 import { generateWorld, worldOptionsFor } from './WorldGenerator';
 import type { PackedWorld } from './worldTransfer';
@@ -17,6 +17,8 @@ export interface WorldRequest {
   readonly mapSize: MapSize;
   /** Whether each river gets a shallow ford. */
   readonly fords: boolean;
+  /** Shape of the ground. */
+  readonly terrain: TerrainType;
 }
 
 /** The worker's answer to request `id`: the packed battlefield, or why it could not be generated. */
@@ -34,6 +36,7 @@ interface Job {
   readonly seed: number;
   readonly mapSize: MapSize;
   readonly fords: boolean;
+  readonly terrain: TerrainType;
   resolve(world: World): void;
   reject(error: unknown): void;
 }
@@ -72,15 +75,18 @@ export class WorldLoader {
 
   constructor(private readonly createWorker: () => WorldWorker | null = browserWorldWorker) {}
 
-  /** The battlefield for `seed` at `mapSize`, with fords when `fords`, generated off the main thread where possible. */
-  load(seed: number, mapSize: MapSize, fords = false): Promise<World> {
+  /**
+   * The battlefield for `seed` at `mapSize` with `terrain` ground, with fords
+   * when `fords`, generated off the main thread where possible.
+   */
+  load(seed: number, mapSize: MapSize, fords = false, terrain: TerrainType = 'gentle'): Promise<World> {
     const worker = this.ensureWorker();
     // Generating here inside the executor turns a failure into a rejection rather than a throw.
-    if (!worker) return new Promise<World>((resolve) => { resolve(generateHere(seed, mapSize, fords)); });
+    if (!worker) return new Promise<World>((resolve) => { resolve(generateHere(seed, mapSize, fords, terrain)); });
     const id = this.nextId++;
     return new Promise<World>((resolve, reject) => {
-      this.jobs.set(id, { seed, mapSize, fords, resolve, reject });
-      worker.post({ id, seed, mapSize, fords });
+      this.jobs.set(id, { seed, mapSize, fords, terrain, resolve, reject });
+      worker.post({ id, seed, mapSize, fords, terrain });
     });
   }
 
@@ -140,13 +146,13 @@ export class WorldLoader {
   }
 }
 
-function generateHere(seed: number, mapSize: MapSize, fords: boolean): World {
-  return generateWorld(seed, worldOptionsFor(mapSize, fords));
+function generateHere(seed: number, mapSize: MapSize, fords: boolean, terrain: TerrainType): World {
+  return generateWorld(seed, worldOptionsFor(mapSize, fords, terrain));
 }
 
 function finishHere(job: Job): void {
   try {
-    job.resolve(generateHere(job.seed, job.mapSize, job.fords));
+    job.resolve(generateHere(job.seed, job.mapSize, job.fords, job.terrain));
   } catch (error) {
     job.reject(error);
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WORLD } from '../src/config/settings';
+import { TERRAIN_TYPES, WORLD } from '../src/config/settings';
 import type { Obstacle, ObstacleShape } from '../src/world/Obstacle';
 import { boundRadiusOf, buildingStoreys, STOREY_HEIGHT } from '../src/world/Obstacle';
 import { ObstacleGrid } from '../src/world/ObstacleGrid';
@@ -424,6 +424,7 @@ describe('generateWorld', () => {
       lakes: 0,
       ponds: 0,
       fords: false,
+      terrainProfile: TERRAIN_TYPES.gentle.profile,
     });
     expect(world.terrain.halfSize).toBe(200);
     expect(world.playableHalfSize).toBe(150);

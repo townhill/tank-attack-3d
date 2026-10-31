@@ -2,8 +2,8 @@
  * Seeded procedural battlefield generation. The same seed always produces the
  * same heightfield and obstacle layout.
  */
-import type { MapSize } from '../config/settings';
-import { MAP_SIZES, WORLD } from '../config/settings';
+import type { MapSize, TerrainProfile, TerrainType } from '../config/settings';
+import { MAP_SIZES, TERRAIN_TYPES, WORLD } from '../config/settings';
 import { lerp, smoothstep, TAU } from '../utils/math';
 import { SimplexNoise2D } from '../utils/noise';
 import { Random } from '../utils/random';
@@ -32,14 +32,17 @@ export interface WorldGenOptions {
   readonly ponds: number;
   /** Whether each river gets a shallow ford; off keeps a seed's layout as it was before fords. */
   readonly fords: boolean;
+  /** Shape of the ground inside the boundary mountains; Gentle keeps a seed's layout as it was before terrain types. */
+  readonly terrainProfile: TerrainProfile;
 }
 
 /**
- * Generation options for a map size: the playable square scales by side
- * length, the boundary mountain margin keeps its width, rivers scale with the
- * side and obstacles, lakes and ponds with the area so density stays the same.
+ * Generation options for a map size and terrain type: the playable square
+ * scales by side length, the boundary mountain margin keeps its width, rivers
+ * scale with the side and obstacles, lakes and ponds with the area so density
+ * stays the same.
  */
-export function worldOptionsFor(size: MapSize, fords = false): WorldGenOptions {
+export function worldOptionsFor(size: MapSize, fords = false, terrain: TerrainType = 'gentle'): WorldGenOptions {
   const scale = MAP_SIZES[size].scale;
   const playableHalfSize = WORLD.playableHalfSize * scale;
   const area = scale * scale;
@@ -54,6 +57,7 @@ export function worldOptionsFor(size: MapSize, fords = false): WorldGenOptions {
     lakes: WORLD.lakeCount * area,
     ponds: WORLD.pondCount * area,
     fords,
+    terrainProfile: TERRAIN_TYPES[terrain].profile,
   };
 }
 
@@ -73,24 +77,42 @@ const MIN_REACHABLE_SHARE = 0.97;
 const WATER_FIELD_MARGIN = 40;
 /** Stricter limit for buildings, so a hillside never swallows the ground floor. */
 export const MAX_BUILDING_SLOPE = 0.18;
+/** Features of the combat-basin mask are roughly this many metres across. */
+const BASIN_SCALE = 430;
+/** Offsets the detail layer so it never lines up with the hills it shares noise with. */
+const DETAIL_OFFSET_X = 17.3;
+const DETAIL_OFFSET_Z = -9.1;
+/** Seed salt for the ridgeline noise, which Gentle never samples. */
+const RIDGE_SALT = 0x85ebca6b;
+
+/** 1 on a zero line of `n`, easing to 0 at `width` either side. */
+function band(n: number, width: number): number {
+  return 1 - smoothstep(0, width, Math.abs(n));
+}
 
 export function generateHeights(seed: number, opts: WorldGenOptions): Terrain {
   const terrain = new Terrain(opts.terrainHalfSize, opts.cellSize);
+  const { hills: hillLayer, detail: detailLayer, ridges: ridgeLayer, basinFloor, spawnFloor } = opts.terrainProfile;
   const hills = new SimplexNoise2D(seed);
   const detail = new SimplexNoise2D(seed ^ 0x9e3779b9);
+  const ridges = new SimplexNoise2D(seed ^ RIDGE_SALT);
   const res = terrain.resolution;
   for (let j = 0; j < res; j++) {
     const z = terrain.vertexZ(j);
     for (let i = 0; i < res; i++) {
       const x = terrain.vertexX(i);
-      let h = hills.fbm(x / 380, z / 380, 4) * 16;
-      h += hills.fbm(x / 110 + 17.3, z / 110 - 9.1, 3) * 4;
+      let h = hills.fbm(x / hillLayer.scale, z / hillLayer.scale, hillLayer.octaves) * hillLayer.amplitude;
+      h += hills.fbm(x / detailLayer.scale + DETAIL_OFFSET_X, z / detailLayer.scale + DETAIL_OFFSET_Z, detailLayer.octaves) * detailLayer.amplitude;
+      // Skipped outright when absent, so Gentle's arithmetic is untouched.
+      if (ridgeLayer.height > 0) {
+        h += ridgeLayer.height * band(ridges.noise(x / ridgeLayer.scale, z / ridgeLayer.scale), ridgeLayer.width);
+      }
       // Low-frequency mask carves out flatter combat basins.
-      const hilliness = smoothstep(-0.35, 0.4, detail.noise(x / 430, z / 430));
-      h *= lerp(0.22, 1, hilliness);
+      const hilliness = smoothstep(-0.35, 0.4, detail.noise(x / BASIN_SCALE, z / BASIN_SCALE));
+      h *= lerp(basinFloor, 1, hilliness);
       // Keep the player's spawn point level.
       const centreDist = Math.hypot(x, z);
-      h *= 0.12 + 0.88 * smoothstep(30, 140, centreDist);
+      h *= spawnFloor + (1 - spawnFloor) * smoothstep(30, 140, centreDist);
       // Boundary mountain range rising beyond the playable square.
       const edge = Math.max(Math.abs(x), Math.abs(z)) - opts.playableHalfSize;
       const rise = smoothstep(-30, 170, edge);

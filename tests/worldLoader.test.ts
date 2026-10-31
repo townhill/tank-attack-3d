@@ -86,7 +86,7 @@ class FakeWorker implements WorldWorker {
 
   answer(k: number): void {
     const r = this.requests[k]!;
-    this.onReply?.({ id: r.id, world: postAcross(packWorld(generateWorld(r.seed, worldOptionsFor(r.mapSize, r.fords)))) });
+    this.onReply?.({ id: r.id, world: postAcross(packWorld(generateWorld(r.seed, worldOptionsFor(r.mapSize, r.fords, r.terrain)))) });
   }
 
   reply(message: WorldReply): void {
@@ -115,7 +115,7 @@ describe('WorldLoader', () => {
     const worker = new FakeWorker();
     const loader = new WorldLoader(() => worker);
     const pending = loader.load(7, 'standard');
-    expect(worker.requests).toEqual([{ id: 1, seed: 7, mapSize: 'standard', fords: false }]);
+    expect(worker.requests).toEqual([{ id: 1, seed: 7, mapSize: 'standard', fords: false, terrain: 'gentle' }]);
     worker.answer(0);
     expectSameWorld(local(7), await pending);
   });
@@ -127,6 +127,20 @@ describe('WorldLoader', () => {
     expect(worker.requests[0]!.fords).toBe(true);
     worker.answer(0);
     expect((await pending).fords.length).toBeGreaterThan(0);
+  });
+
+  it('asks the worker for the terrain type the battlefield wants', async () => {
+    const worker = new FakeWorker();
+    const loader = new WorldLoader(() => worker);
+    const pending = loader.load(3, 'standard', false, 'hilly');
+    expect(worker.requests[0]!.terrain).toBe('hilly');
+    worker.answer(0);
+    expectSameWorld(generateWorld(3, worldOptionsFor('standard', false, 'hilly')), await pending);
+  });
+
+  it('generates the chosen terrain type on the main thread too', async () => {
+    const hilly = await new WorldLoader(() => null).load(5, 'standard', false, 'hilly');
+    expectSameWorld(generateWorld(5, worldOptionsFor('standard', false, 'hilly')), hilly);
   });
 
   it('matches replies to requests when they come back out of order', async () => {
@@ -243,7 +257,7 @@ describe('world worker entry', () => {
     };
     vi.stubGlobal('self', scope);
     await import('../src/world/worldWorker');
-    scope.onmessage?.({ data: { id: 4, seed: 2, mapSize: 'standard', fords: false } });
+    scope.onmessage?.({ data: { id: 4, seed: 2, mapSize: 'standard', fords: false, terrain: 'gentle' } });
     expect(posted).toHaveLength(1);
     const reply = posted[0]!;
     expect(reply.message.id).toBe(4);
@@ -253,7 +267,7 @@ describe('world worker entry', () => {
     expectSameWorld(local(2), unpackWorld(reply.message.world));
 
     // A request that cannot be generated is answered with the reason.
-    scope.onmessage?.({ data: { id: 5, seed: 2, mapSize: 'enormous' as MapSize, fords: false } });
+    scope.onmessage?.({ data: { id: 5, seed: 2, mapSize: 'enormous' as MapSize, fords: false, terrain: 'gentle' } });
     expect(posted[1]!.message).toEqual({ id: 5, error: expect.any(String) as string });
   });
 });
@@ -297,8 +311,8 @@ describe('browserWorldWorker', () => {
     const replies: WorldReply[] = [];
     let failures = 0;
     worker.listen((reply) => replies.push(reply), () => failures++);
-    worker.post({ id: 1, seed: 2, mapSize: 'standard', fords: false });
-    expect(stub.posted).toEqual([{ id: 1, seed: 2, mapSize: 'standard', fords: false }]);
+    worker.post({ id: 1, seed: 2, mapSize: 'standard', fords: false, terrain: 'gentle' });
+    expect(stub.posted).toEqual([{ id: 1, seed: 2, mapSize: 'standard', fords: false, terrain: 'gentle' }]);
     stub.onmessage?.({ data: { id: 1, error: 'nope' } });
     expect(replies).toEqual([{ id: 1, error: 'nope' }]);
 
