@@ -2,12 +2,14 @@
  * Chunked terrain mesh using the simulation's exact triangulation, with
  * neon grid and contour lines computed in the fragment shader. Because the
  * lines are part of the surface they are naturally hidden-line correct and
- * can never z-fight.
+ * can never z-fight. Ground along every shore is darkened by a per-vertex
+ * wetness and glows faintly at the waterline.
  */
 import type { WebGLProgramParametersWithUniforms } from 'three';
 import { BufferAttribute, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, Vector2, Vector3 } from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { shoreWetness } from '../world/shoreline';
 import type { World } from '../world/World';
 import type { GraphicsModeSpec } from './GraphicsModes';
 import type { MaterialLibrary } from './Materials';
@@ -18,13 +20,20 @@ const BOUNDARY_POST_SPACING = 40;
 const BOUNDARY_LIFT = 0.35;
 
 const VERTEX_DECL = /* glsl */ `
+attribute float aWet;
 varying vec3 vTerrainWorld;
+varying float vTerrainWet;
 `;
 const VERTEX_BODY = /* glsl */ `
 vTerrainWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+vTerrainWet = aWet;
 `;
 const FRAGMENT_DECL = /* glsl */ `
 varying vec3 vTerrainWorld;
+varying float vTerrainWet;
+uniform vec3 uWetTint;
+uniform vec3 uWetGlowColor;
+uniform float uWetGlow;
 uniform vec3 uLowColor;
 uniform vec3 uHighColor;
 uniform vec2 uHeightRange;
@@ -53,11 +62,14 @@ float vtContour(float h, float spacing) {
 const FRAGMENT_TINT = /* glsl */ `
 #include <color_fragment>
 diffuseColor.rgb *= mix(uLowColor, uHighColor, smoothstep(uHeightRange.x, uHeightRange.y, vTerrainWorld.y));
+diffuseColor.rgb *= mix(vec3(1.0), uWetTint, vTerrainWet);
 `;
 const FRAGMENT_EMISSIVE = /* glsl */ `
 #include <emissivemap_fragment>
 totalEmissiveRadiance += uGridColor * (vtGrid(vTerrainWorld.xz, uGridSpacing) * uGridIntensity);
 totalEmissiveRadiance += uContourColor * (vtContour(vTerrainWorld.y, uContourSpacing) * uContourIntensity);
+// The glow hugs the waterline, where the ground is wettest.
+totalEmissiveRadiance += uWetGlowColor * (vTerrainWet * vTerrainWet * vTerrainWet * uWetGlow);
 `;
 
 export class TerrainView {
@@ -73,6 +85,9 @@ export class TerrainView {
     uContourColor: { value: new Color() },
     uContourSpacing: { value: 4 },
     uContourIntensity: { value: 0.3 },
+    uWetTint: { value: new Color(0xffffff) },
+    uWetGlowColor: { value: new Color() },
+    uWetGlow: { value: 0 },
   };
   private readonly geometries: BufferGeometry[] = [];
   private readonly boundaryGeometry: LineSegmentsGeometry;
@@ -91,10 +106,11 @@ export class TerrainView {
     this.uniforms.uHeightRange.value.set(range.min, Math.min(range.max, range.min + 80));
 
     const terrain = world.terrain;
+    const wetness = shoreWetness(terrain, world.water.level);
     const cells = terrain.resolution - 1;
     for (let cj = 0; cj < cells; cj += CHUNK_CELLS) {
       for (let ci = 0; ci < cells; ci += CHUNK_CELLS) {
-        const geo = this.buildChunk(world, ci, cj, Math.min(CHUNK_CELLS, cells - ci), Math.min(CHUNK_CELLS, cells - cj));
+        const geo = this.buildChunk(world, wetness, ci, cj, Math.min(CHUNK_CELLS, cells - ci), Math.min(CHUNK_CELLS, cells - cj));
         this.geometries.push(geo);
         const mesh = new Mesh(geo, this.material);
         mesh.receiveShadow = true;
@@ -109,12 +125,13 @@ export class TerrainView {
     this.group.add(boundary);
   }
 
-  private buildChunk(world: World, i0: number, j0: number, cw: number, ch: number): BufferGeometry {
+  private buildChunk(world: World, wetness: Float32Array, i0: number, j0: number, cw: number, ch: number): BufferGeometry {
     const terrain = world.terrain;
     const vw = cw + 1;
     const vh = ch + 1;
     const positions = new Float32Array(vw * vh * 3);
     const normals = new Float32Array(vw * vh * 3);
+    const wet = new Float32Array(vw * vh);
     const n = new Vector3();
     for (let j = 0; j < vh; j++) {
       for (let i = 0; i < vw; i++) {
@@ -130,6 +147,7 @@ export class TerrainView {
         normals[k] = n.x;
         normals[k + 1] = n.y;
         normals[k + 2] = n.z;
+        wet[j * vw + i] = wetness[terrain.index(gi, gj)]!;
       }
     }
     const indices = new Uint32Array(cw * ch * 6);
@@ -152,6 +170,7 @@ export class TerrainView {
     const geo = new BufferGeometry();
     geo.setAttribute('position', new BufferAttribute(positions, 3));
     geo.setAttribute('normal', new BufferAttribute(normals, 3));
+    geo.setAttribute('aWet', new BufferAttribute(wet, 1));
     geo.setIndex(new BufferAttribute(indices, 1));
     geo.computeBoundingSphere();
     geo.computeBoundingBox();
@@ -198,6 +217,9 @@ export class TerrainView {
     u.uContourColor.value.setHex(t.contour);
     u.uContourSpacing.value = t.contourSpacing;
     u.uContourIntensity.value = t.contourIntensity;
+    u.uWetTint.value.setHex(spec.water.wetTint);
+    u.uWetGlowColor.value.setHex(spec.water.shore);
+    u.uWetGlow.value = spec.water.wetGlow;
     this.material.roughness = spec.solidStyle === 'shaded' ? 0.9 : 0.75;
     this.material.metalness = spec.solidStyle === 'dark' ? 0.25 : 0.05;
     this.material.envMapIntensity = spec.envIntensity * 0.4;

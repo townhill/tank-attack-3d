@@ -12,12 +12,14 @@ import type { BufferGeometry, WebGLProgramParametersWithUniforms } from 'three';
 import { BufferAttribute, BufferGeometry as Geometry, Color, Group, Mesh, MeshStandardMaterial } from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import type { QualityLevel } from '../config/userSettings';
 import { riverFlowField } from '../world/riverFlow';
 import { shorelineSegments } from '../world/shoreline';
 import type { Terrain } from '../world/Terrain';
 import type { World } from '../world/World';
 import type { GraphicsModeSpec } from './GraphicsModes';
 import type { MaterialLibrary } from './Materials';
+import { RIPPLES_DEFINE, SHEEN_DEFINE, waterShaderDefines } from './waterDetail';
 
 const CHUNK_CELLS = 36;
 /** Shoreline edges float this far above the waterline (metres). */
@@ -62,6 +64,7 @@ uniform float uSheen;
 // pattern fades out once a wavelength covers only a few pixels, before it
 // could alias into noise. No early return: every derivative is taken in
 // uniform control flow, where GLSL defines it.
+#ifdef ${RIPPLES_DEFINE}
 float vtRipple(vec2 p, vec2 flow, float t) {
   vec2 q = (p - flow * t) * (6.2831853 / uRippleWavelength);
   float perPixel = max(length(fwidth(q)), 1e-4);
@@ -73,6 +76,7 @@ float vtRipple(vec2 p, vec2 flow, float t) {
   float line = 1.0 - smoothstep(0.0, w * 1.5 + 0.12, abs(field - 1.5));
   return line * fade;
 }
+#endif
 `;
 const FRAGMENT_TINT = /* glsl */ `
 #include <color_fragment>
@@ -80,12 +84,16 @@ diffuseColor.rgb *= mix(uShallowColor, uDeepColor, smoothstep(0.0, uDeepDepth, v
 `;
 const FRAGMENT_EMISSIVE = /* glsl */ `
 #include <emissivemap_fragment>
+totalEmissiveRadiance += uGlowColor * ((1.0 - smoothstep(0.0, uGlowDepth, vWaterDepth)) * uGlowIntensity);
+#ifdef ${RIPPLES_DEFINE}
 float vtWet = smoothstep(0.0, 0.3, vWaterDepth);
 totalEmissiveRadiance += uRippleColor * (vtRipple(vWaterWorld.xz, vWaterFlow, uTime) * uRippleIntensity * vtWet);
-totalEmissiveRadiance += uGlowColor * ((1.0 - smoothstep(0.0, uGlowDepth, vWaterDepth)) * uGlowIntensity);
+#endif
+#ifdef ${SHEEN_DEFINE}
 vec3 vtToEye = normalize(cameraPosition - vWaterWorld);
 float vtGrazing = pow(1.0 - max(vtToEye.y, 0.0), 3.0);
 totalEmissiveRadiance += uRippleColor * (vtGrazing * uSheen);
+#endif
 `;
 
 export class WaterView {
@@ -105,6 +113,7 @@ export class WaterView {
     uSheen: { value: 0 },
   };
   private readonly disposables: { dispose(): void }[] = [];
+  private quality: QualityLevel | null = null;
 
   constructor(world: World, private readonly materials: MaterialLibrary) {
     this.material = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.1 });
@@ -161,6 +170,14 @@ export class WaterView {
     u.uGlowColor.value.setHex(look.shore);
     u.uGlowIntensity.value = look.glowIntensity;
     u.uSheen.value = look.sheen;
+  }
+
+  /** Compiles in the shader features `quality` draws (see WATER_DETAIL); recompiles only when it changes. */
+  setQuality(quality: QualityLevel): void {
+    if (quality === this.quality) return;
+    this.quality = quality;
+    this.material.defines = waterShaderDefines(quality);
+    this.material.needsUpdate = true;
   }
 
   /** Advances the ripples; `time` is the game clock in seconds. */

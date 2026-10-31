@@ -24,6 +24,7 @@ export default defineConfig({
         'src/audio/audioMath.ts',
         'src/rendering/CameraState.ts',
         'src/rendering/bridgeDetail.ts',
+        'src/rendering/waterDetail.ts',
         'src/config/**',
       ],
       // DOM/WebGL orchestration is verified by browser smoke tests instead of unit tests.

@@ -19,9 +19,13 @@ import {
   steppedGlide,
   trackParams,
   voiceLoudness,
+  wadeParams,
   warningInterval,
   type VoiceSlot,
 } from '../src/audio/audioMath';
+import { impactRecipeFor } from '../src/audio/eventSounds';
+import { obstacleImpact, terrainImpact, waterImpact } from '../src/audio/sfxCombat';
+import { WATER } from '../src/config/settings';
 import { Mixer } from '../src/audio/mixer';
 import { getAudioContextCtor, setPannerPosition } from '../src/audio/synth';
 import type { GameEvent } from '../src/game/events';
@@ -265,6 +269,7 @@ function frame(overrides: Partial<AudioFrame> = {}): AudioFrame {
     turretYawRate: 1,
     playerHealthFraction: 1,
     playerAlive: true,
+    playerWadeDepth: 0,
     enemies: [enemy(1, 50, -50), enemy(2, -80, 0, 'heavy'), enemy(3, 0, 120, 'scout'), enemy(4, 200, 200)],
     ...overrides,
   };
@@ -332,6 +337,55 @@ describe('trackParams', () => {
 
   it('handles a zero max speed', () => {
     expect(trackParams(5, 0).gain).toBe(0);
+  });
+});
+
+describe('wadeParams', () => {
+  const deep = WATER.impassableDepth;
+
+  it('is silent on dry ground and when stopped in the water', () => {
+    expect(wadeParams(10, 15, 0).gain).toBe(0);
+    expect(wadeParams(0, 15, 0.8).gain).toBe(0);
+    expect(wadeParams(10, 0, 0.8).gain).toBe(0);
+  });
+
+  it('sloshes louder and faster with speed, in either direction', () => {
+    const slow = wadeParams(3, 15, 0.6);
+    const fast = wadeParams(12, 15, 0.6);
+    expect(slow.gain).toBeGreaterThan(0);
+    expect(fast.gain).toBeGreaterThan(slow.gain);
+    expect(fast.sloshRate).toBeGreaterThan(slow.sloshRate);
+    expect(wadeParams(-8, 15, 0.6)).toEqual(wadeParams(8, 15, 0.6));
+  });
+
+  it('gets louder and duller as the water deepens, levelling off at the deepest a tank can wade', () => {
+    const shallow = wadeParams(10, 15, 0.2);
+    const wading = wadeParams(10, 15, deep * 0.9);
+    expect(wading.gain).toBeGreaterThan(shallow.gain);
+    expect(wading.filterHz).toBeLessThan(shallow.filterHz);
+    expect(wadeParams(10, 15, deep * 3)).toEqual(wadeParams(10, 15, deep));
+  });
+
+  it('muffles the track clatter in water but never on dry ground', () => {
+    expect(wadeParams(10, 15, 0).trackDamp).toBe(1);
+    expect(wadeParams(0, 15, 0.8).trackDamp).toBeLessThan(1);
+    expect(wadeParams(10, 15, deep).trackDamp).toBeLessThan(wadeParams(10, 15, 0.2).trackDamp);
+    expect(wadeParams(10, 15, deep).trackDamp).toBeGreaterThan(0);
+  });
+
+  it('writes into the provided out object', () => {
+    const out = { gain: 0, sloshRate: 0, filterHz: 0, trackDamp: 0 };
+    expect(wadeParams(5, 15, 0.5, out)).toBe(out);
+    expect(out.gain).toBeGreaterThan(0);
+  });
+});
+
+describe('impactRecipeFor', () => {
+  it('gives shells landing in water a splash of their own', () => {
+    expect(impactRecipeFor('water')).toBe(waterImpact);
+    expect(impactRecipeFor('terrain')).toBe(terrainImpact);
+    expect(impactRecipeFor('bridge')).toBe(obstacleImpact);
+    expect(impactRecipeFor('expired')).toBeNull();
   });
 });
 
@@ -534,6 +588,19 @@ describe('AudioManager with a fake AudioContext', () => {
     }
     expect(warn).not.toHaveBeenCalled();
     expect(ctx.liveSources()).toBeGreaterThan(0);
+  });
+
+  it('drives the wading slosh while the player crosses water, and tears it down with the rest', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { audio, ctx } = unlockedManager();
+    audio.update(1 / 60, frame({ playerWadeDepth: 0.8, playerSpeed: 10 }));
+    ctx.advance(0.5);
+    audio.update(1 / 60, frame({ playerWadeDepth: 0, playerSpeed: 10 }));
+    expect(warn).not.toHaveBeenCalled();
+    audio.stopAll();
+    ctx.advance(10);
+    expect(ctx.liveSources()).toBe(0);
+    audio.dispose();
   });
 
   it('cleans up one-shots and stops loops on stopAll, rebuilding on the next update', () => {

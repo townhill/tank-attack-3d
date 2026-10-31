@@ -33,5 +33,7 @@ export interface AudioFrame {
   turretYawRate: number;
   playerHealthFraction: number;
   playerAlive: boolean;
+  /** Depth of the water the player is wading through (metres); 0 on dry ground and on bridges. */
+  playerWadeDepth: number;
   enemies: readonly AudioEnemy[];
 }

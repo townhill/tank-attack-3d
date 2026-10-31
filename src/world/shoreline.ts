@@ -3,7 +3,45 @@
  * terrain's own triangles. Depth varies linearly across each triangle, so
  * the traced line lies exactly where the drawn water meets the drawn ground.
  */
+import { clamp } from '../utils/math';
 import type { Terrain } from './Terrain';
+
+/** Height above the water over which a bank dries out (metres): a little above the banks' freeboard, so bank tops stay damp. */
+const WET_RISE = 3;
+/** Depth below the water over which the bed loses its wet look (metres). */
+const WET_DEPTH = 1.2;
+/** Share of a bank vertex's wetness that soaks one vertex further inland. */
+const WET_SPREAD = 0.5;
+
+/**
+ * Wetness of the ground at each terrain vertex, 0..1: 1 at the waterline,
+ * falling to 0 over WET_RISE up the bank and WET_DEPTH down into the water,
+ * with a little soaked one vertex beyond the ring the water level reaches.
+ * The terrain draws it as a darker, glistening band along every shore.
+ */
+export function shoreWetness(terrain: Terrain, level: Float32Array): Float32Array {
+  const heights = terrain.heights;
+  const wet = new Float32Array(level.length);
+  for (let k = 0; k < level.length; k++) {
+    const l = level[k]!;
+    if (Number.isNaN(l)) continue;
+    const above = heights[k]! - l;
+    wet[k] = above >= 0 ? clamp(1 - above / WET_RISE, 0, 1) : clamp(1 + above / WET_DEPTH, 0, 1);
+  }
+  const res = terrain.resolution;
+  const soaked = wet.slice();
+  for (let k = 0; k < level.length; k++) {
+    if (!Number.isNaN(level[k]!)) continue;
+    const i = k % res;
+    let most = 0;
+    if (i > 0 && !Number.isNaN(level[k - 1]!)) most = Math.max(most, wet[k - 1]!);
+    if (i < res - 1 && !Number.isNaN(level[k + 1]!)) most = Math.max(most, wet[k + 1]!);
+    if (k >= res && !Number.isNaN(level[k - res]!)) most = Math.max(most, wet[k - res]!);
+    if (k + res < level.length && !Number.isNaN(level[k + res]!)) most = Math.max(most, wet[k + res]!);
+    soaked[k] = most * WET_SPREAD;
+  }
+  return soaked;
+}
 
 /**
  * Shoreline segments as flat [x0, y0, z0, x1, y1, z1, ...] pairs at the water

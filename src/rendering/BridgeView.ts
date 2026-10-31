@@ -2,8 +2,10 @@
  * Bridges as faceted occluding solids with crease edges: a deck slab that
  * follows the road's arch, parapets along both kerbs, piers with cutwater
  * noses standing on the riverbed and abutments at each bank, dressed with
- * railings, lamp posts, a dashed centreline and stringers drawn as lines.
- * All bridges share one merged mesh and one set of lines.
+ * railings, lamp posts and a dashed centreline drawn as lines. The longest
+ * crossing on each river is a through truss; the others ride on solid plate
+ * girders with stiffened webs. All bridges share one merged mesh and one set
+ * of lines.
  */
 import type { BufferGeometry } from 'three';
 import { Group, Matrix4, Mesh, Vector3 } from 'three';
@@ -14,7 +16,8 @@ import { DECK_THICKNESS, deckHeightAt, PARAPET_HEIGHT, PARAPET_THICKNESS, PIER_H
 import { toWorldX, toWorldZ } from '../world/Obstacle';
 import type { Terrain } from '../world/Terrain';
 import type { World } from '../world/World';
-import { bridgeDetailSegments, pierFootprint } from './bridgeDetail';
+import type { BridgeStyle } from './bridgeDetail';
+import { bridgeDetailSegments, bridgeStyles, GIRDER_DEPTH, GIRDER_HALF_WEB, girderOffsets, pierFootprint } from './bridgeDetail';
 import { box, edgePositions, loft, mergeParts, SegmentList, transformSegments } from './geometry';
 import type { MaterialLibrary } from './Materials';
 
@@ -36,15 +39,17 @@ export class BridgeView {
     const edges = new SegmentList();
     const matrix = new Matrix4();
     const axis = new Vector3(0, 1, 0);
-    for (const b of world.bridges) {
+    const styles = bridgeStyles(world.bridges);
+    world.bridges.forEach((b, k) => {
+      const style = styles[k]!;
       matrix.makeRotationAxis(axis, -b.yaw).setPosition(b.x, 0, b.z);
-      for (const piece of bridgePieces(b, world.terrain)) {
+      for (const piece of bridgePieces(b, world.terrain, style)) {
         edges.append(transformSegments(edgePositions(piece, EDGE_ANGLE), matrix));
         piece.applyMatrix4(matrix);
         solids.push(piece);
       }
-      edges.append(transformSegments(bridgeDetailSegments(b), matrix));
-    }
+      edges.append(transformSegments(bridgeDetailSegments(b, style), matrix));
+    });
     const merged = mergeParts(solids);
     for (const s of solids) s.dispose();
     this.disposables.push(merged);
@@ -65,7 +70,7 @@ export class BridgeView {
 }
 
 /** Solid pieces of one bridge in its own frame: x across the deck, z along it, y in world height. */
-function bridgePieces(b: Bridge, terrain: Terrain): BufferGeometry[] {
+function bridgePieces(b: Bridge, terrain: Terrain, style: BridgeStyle): BufferGeometry[] {
   const pieces: BufferGeometry[] = [];
   const outer = b.halfWidth + PARAPET_THICKNESS;
   const segments = Math.max(2, Math.ceil((2 * b.halfLength) / DECK_SEGMENT));
@@ -76,6 +81,11 @@ function bridgePieces(b: Bridge, terrain: Terrain): BufferGeometry[] {
     pieces.push(box(-outer, road - DECK_THICKNESS, z0, outer, road, z1));
     pieces.push(box(-outer, road, z0, -b.halfWidth, road + PARAPET_HEIGHT, z1));
     pieces.push(box(b.halfWidth, road, z0, outer, road + PARAPET_HEIGHT, z1));
+    if (style !== 'girder') continue;
+    const underside = road - DECK_THICKNESS;
+    for (const x of girderOffsets(b)) {
+      pieces.push(box(x - GIRDER_HALF_WEB, underside - GIRDER_DEPTH, z0, x + GIRDER_HALF_WEB, underside, z1));
+    }
   }
   const footprint = pierFootprint(b.halfWidth - PIER_INSET, PIER_HALF_ALONG);
   for (const along of b.piers) {

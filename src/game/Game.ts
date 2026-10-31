@@ -140,7 +140,7 @@ export class Game {
     this.audioFrame = {
       listenerX: 0, listenerY: 0, listenerZ: 0, listenerForwardX: 0, listenerForwardY: 0, listenerForwardZ: -1,
       playerX: 0, playerY: 0, playerZ: 0, playerSpeed: 0, playerMaxSpeed: TANK_SPECS.player.maxSpeed, throttle: 0,
-      turretYawRate: 0, playerHealthFraction: 1, playerAlive: true, enemies: this.audioEnemies,
+      turretYawRate: 0, playerHealthFraction: 1, playerAlive: true, playerWadeDepth: 0, enemies: this.audioEnemies,
     };
 
     this.bindEvents();
@@ -636,6 +636,7 @@ export class Game {
     f.turretYawRate = p.turretYawRate;
     f.playerHealthFraction = p.healthFraction;
     f.playerAlive = p.alive;
+    f.playerWadeDepth = p.bridgeId < 0 ? this.sim.world.water.depthAt(p.x, p.z) : 0;
     this.audioEnemies.length = 0;
     for (const e of this.sim.enemies) {
       if (!e.tank.alive) continue;

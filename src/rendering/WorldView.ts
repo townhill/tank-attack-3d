@@ -6,7 +6,7 @@
 import type { Texture } from 'three';
 import { BackSide, Color, DirectionalLight, FogExp2, HemisphereLight, Mesh, PMREMGenerator, Scene, ShaderMaterial, SphereGeometry, Vector3 } from 'three';
 import type { TankKind } from '../config/settings';
-import type { UserSettings } from '../config/userSettings';
+import type { QualityLevel, UserSettings } from '../config/userSettings';
 import type { GameEvent } from '../game/events';
 import type { Simulation } from '../game/Simulation';
 import type { Random } from '../utils/random';
@@ -76,6 +76,7 @@ export class WorldView {
   private envTexture: Texture | null = null;
   private spec: GraphicsModeSpec | null = null;
   private shadowsAllowed = true;
+  private quality: QualityLevel = 'high';
   private readonly seen = new Set<number>();
 
   constructor(
@@ -139,6 +140,7 @@ export class WorldView {
     const envChanged = this.spec?.id !== spec.id;
     this.spec = spec;
     this.shadowsAllowed = shadowsAllowed;
+    this.quality = settings.quality;
     this.materials.applyMode(spec, { seeThrough: settings.seeThroughWireframe });
     this.applyModeToScenery(spec);
     this.terrain.applyMode(spec, settings.groundGrid);
@@ -161,6 +163,7 @@ export class WorldView {
   private applyModeToScenery(spec: GraphicsModeSpec): void {
     this.terrain.applyMode(spec, true);
     this.water.applyMode(spec);
+    this.water.setQuality(this.quality);
     this.obstacles.applyMode(spec);
     this.sky.applyMode(spec);
   }

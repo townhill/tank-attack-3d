@@ -1,16 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import type { BridgeStyle } from '../src/rendering/bridgeDetail';
 import {
   bridgeDetailSegments,
+  bridgeStyles,
   CUTWATER_LENGTH,
   DASH_LENGTH,
   DASH_LIFT,
+  GIRDER_DEPTH,
+  GIRDER_HALF_WEB,
+  girderOffsets,
   LAMP_ARM,
   LAMP_HEIGHT,
   pierFootprint,
   RAIL_HEIGHT,
   RAIL_SPACING,
+  STIFFENER_SPACING,
+  TRUSS_HEIGHT,
+  TRUSS_PANEL,
+  trussPanelPoints,
 } from '../src/rendering/bridgeDetail';
-import { DECK_THICKNESS, deckHeightAt, PARAPET_HEIGHT, PARAPET_THICKNESS } from '../src/world/Bridge';
+import { DECK_THICKNESS, deckHeightAt, PARAPET_HEIGHT, PARAPET_THICKNESS, PIER_INSET } from '../src/world/Bridge';
 import { makeBridge } from './waterFixtures';
 
 interface Segment {
@@ -52,14 +61,31 @@ describe('pierFootprint', () => {
   });
 });
 
-describe('bridgeDetailSegments', () => {
-  const bridge = makeBridge({ halfLength: 30, halfWidth: 7, endY: 5, arch: 0.5 });
-  const segments = segmentsOf(bridgeDetailSegments(bridge));
+describe('bridgeStyles', () => {
+  it('makes the longest crossing on each river a through truss and the rest plate girders', () => {
+    const bridges = [
+      makeBridge({ id: 0, riverId: 0, halfSpan: 20 }),
+      makeBridge({ id: 1, riverId: 0, halfSpan: 22 }),
+      makeBridge({ id: 2, riverId: 0, halfSpan: 19 }),
+      makeBridge({ id: 3, riverId: 1, halfSpan: 18 }),
+    ];
+    expect(bridgeStyles(bridges)).toEqual<BridgeStyle[]>(['girder', 'truss', 'girder', 'truss']);
+  });
+
+  it('breaks a tie in favour of the first bridge, so the choice never depends on order of equals', () => {
+    const bridges = [makeBridge({ id: 0, halfSpan: 20 }), makeBridge({ id: 1, halfSpan: 20 })];
+    expect(bridgeStyles(bridges)).toEqual<BridgeStyle[]>(['truss', 'girder']);
+  });
+});
+
+describe.each<BridgeStyle>(['girder', 'truss'])('bridgeDetailSegments (%s)', (style) => {
+  const bridge = makeBridge({ halfLength: 30, halfSpan: 22, halfWidth: 7, endY: 5, arch: 0.5 });
+  const segments = segmentsOf(bridgeDetailSegments(bridge, style));
   const railX = bridge.halfWidth + PARAPET_THICKNESS / 2;
   const onParapet = (s: Segment): boolean => Math.abs(Math.abs(s.x0) - railX) < 1e-9;
 
   it('comes in whole segments that never leave the deck', () => {
-    expect(bridgeDetailSegments(bridge).length % 6).toBe(0);
+    expect(bridgeDetailSegments(bridge, style).length % 6).toBe(0);
     for (const s of segments) {
       for (const z of [s.z0, s.z1]) expect(Math.abs(z)).toBeLessThanOrEqual(bridge.halfLength + 1e-9);
       for (const x of [s.x0, s.x1]) expect(Math.abs(x)).toBeLessThanOrEqual(bridge.halfWidth + PARAPET_THICKNESS + 1e-9);
@@ -104,13 +130,116 @@ describe('bridgeDetailSegments', () => {
     }
   });
 
-  it('hangs stringers under the slab the full length of the deck', () => {
+  it('leaves headroom for the tallest tank wherever a member crosses over the road', () => {
+    for (const s of segments) {
+      if (Math.min(Math.abs(s.x0), Math.abs(s.x1)) >= bridge.halfWidth) continue;
+      if (Math.max(s.y0, s.y1) <= deckHeightAt(bridge, s.z0) + LAMP_HEIGHT + PARAPET_HEIGHT) continue;
+      expect(Math.min(s.y0 - deckHeightAt(bridge, s.z0), s.y1 - deckHeightAt(bridge, s.z1))).toBeGreaterThan(5);
+    }
+  });
+});
+
+describe('truss bridges', () => {
+  const bridge = makeBridge({ halfLength: 30, halfSpan: 22, halfWidth: 7, endY: 5, arch: 0.5 });
+  const segments = segmentsOf(bridgeDetailSegments(bridge, 'truss'));
+  const trussX = bridge.halfWidth + PARAPET_THICKNESS / 2;
+  const base = (z: number): number => deckHeightAt(bridge, z) + PARAPET_HEIGHT;
+  const points = trussPanelPoints(bridge);
+
+  it('divides the river span into an even number of equal panels', () => {
+    const panels = points.length - 1;
+    expect(panels % 2).toBe(0);
+    expect(panels).toBeGreaterThanOrEqual(4);
+    expect(points[0]).toBeCloseTo(-bridge.halfSpan, 9);
+    expect(points[panels]).toBeCloseTo(bridge.halfSpan, 9);
+    const width = (2 * bridge.halfSpan) / panels;
+    expect(width).toBeLessThanOrEqual(TRUSS_PANEL * 1.25);
+    for (let k = 1; k <= panels; k++) expect(points[k]! - points[k - 1]!).toBeCloseTo(width, 9);
+  });
+
+  it('stands a vertical at every inner panel point on both parapets, the top chord following the arch', () => {
+    const verticals = segments.filter((s) => isVertical(s) && Math.abs(Math.abs(s.x0) - trussX) < 1e-9 && Math.abs(height(s) - TRUSS_HEIGHT) < 1e-9);
+    expect(verticals).toHaveLength(2 * (points.length - 2));
+    for (const s of verticals) {
+      expect(Math.min(s.y0, s.y1)).toBeCloseTo(base(s.z0), 9);
+      expect(points.slice(1, -1).some((z) => Math.abs(z - s.z0) < 1e-9)).toBe(true);
+    }
+  });
+
+  it('slopes an end post from each end of the span up to the top chord', () => {
+    const first = points[1]!;
+    for (const side of [-1, 1]) {
+      for (const end of [-1, 1]) {
+        const z0 = end * bridge.halfSpan;
+        const z1 = end * first * -1;
+        const post = segments.find((s) => s.x0 === side * trussX && s.x1 === side * trussX && Math.abs(s.z0 - z0) < 1e-9 && Math.abs(s.z1 - z1) < 1e-9);
+        expect(post).toBeDefined();
+        expect(post!.y0).toBeCloseTo(base(z0), 9);
+        expect(post!.y1).toBeCloseTo(base(z1) + TRUSS_HEIGHT, 9);
+      }
+    }
+  });
+
+  it('braces the two trusses together overhead at every inner panel point', () => {
+    const struts = segments.filter((s) => s.z0 === s.z1 && Math.abs(s.x0 + s.x1) < 1e-9 && Math.abs(Math.abs(s.x0) - trussX) < 1e-9 && s.y0 === s.y1);
+    expect(struts.length).toBeGreaterThanOrEqual(points.length - 2);
+    for (const s of struts) expect(s.y0).toBeCloseTo(base(s.z0) + TRUSS_HEIGHT, 9);
+  });
+
+  it('keeps the floor stringers under the slab the full length of the deck', () => {
     const under = segments.filter((s) => s.y0 < deckHeightAt(bridge, s.z0) - DECK_THICKNESS);
-    expect(under.length).toBeGreaterThan(0);
-    const xs = new Set(under.map((s) => s.x0));
-    expect(xs.size).toBe(2);
+    expect(new Set(under.map((s) => s.x0)).size).toBe(2);
     let length = 0;
     for (const s of under) length += Math.abs(s.z1 - s.z0);
     expect(length).toBeCloseTo(2 * 2 * bridge.halfLength, 6);
+  });
+});
+
+describe('girder bridges', () => {
+  const bridge = makeBridge({ halfLength: 30, halfSpan: 22, halfWidth: 7, endY: 5, arch: 0.5 });
+  const segments = segmentsOf(bridgeDetailSegments(bridge, 'girder'));
+  const underside = (z: number): number => deckHeightAt(bridge, z) - DECK_THICKNESS;
+
+  it('carries the deck on a pair of girders that rest on the piers', () => {
+    const offsets = girderOffsets(bridge);
+    expect(offsets).toHaveLength(2);
+    expect(offsets[0]).toBeCloseTo(-offsets[1], 9);
+    for (const x of offsets) expect(Math.abs(x)).toBeLessThan(bridge.halfWidth - PIER_INSET);
+  });
+
+  it('stiffens both faces of each girder web at regular intervals the full length of the deck', () => {
+    for (const x of girderOffsets(bridge)) {
+      for (const face of [-1, 1]) {
+        // Just proud of the web's face, so the solid web never hides them.
+        const stiffeners = segments
+          .filter((s) => isVertical(s) && Math.sign(s.x0 - x) === face && Math.abs(s.x0 - x) > GIRDER_HALF_WEB && Math.abs(s.x0 - x) < GIRDER_HALF_WEB + 0.1)
+          .sort((a, b) => a.z0 - b.z0);
+        expect(stiffeners.length).toBeGreaterThan(2);
+        expect(stiffeners[0]!.z0).toBeCloseTo(-bridge.halfLength, 9);
+        expect(stiffeners[stiffeners.length - 1]!.z0).toBeCloseTo(bridge.halfLength, 9);
+        for (let k = 1; k < stiffeners.length; k++) expect(stiffeners[k]!.z0 - stiffeners[k - 1]!.z0).toBeLessThanOrEqual(STIFFENER_SPACING + 1e-9);
+        for (const s of stiffeners) {
+          expect(Math.max(s.y0, s.y1)).toBeCloseTo(underside(s.z0), 9);
+          expect(height(s)).toBeCloseTo(GIRDER_DEPTH, 9);
+        }
+      }
+    }
+  });
+
+  it('draws nothing inside a girder web, where the solid would hide it', () => {
+    for (const x of girderOffsets(bridge)) {
+      for (const s of segments) {
+        const inside = (px: number, py: number, pz: number): boolean =>
+          Math.abs(px - x) <= GIRDER_HALF_WEB && py <= underside(pz) + 1e-9 && py >= underside(pz) - GIRDER_DEPTH - 1e-9;
+        expect(inside(s.x0, s.y0, s.z0) && inside(s.x1, s.y1, s.z1)).toBe(false);
+      }
+    }
+  });
+
+  it('has no truss above the parapets', () => {
+    for (const s of segments) {
+      const top = Math.max(s.y0, s.y1) - deckHeightAt(bridge, s.z0);
+      expect(top).toBeLessThanOrEqual(PARAPET_HEIGHT + LAMP_HEIGHT + 1e-9);
+    }
   });
 });

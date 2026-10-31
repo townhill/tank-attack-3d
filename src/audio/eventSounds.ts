@@ -5,7 +5,7 @@ import type { FireEvent, GameEvent, ImpactEvent, PlayerDamagedEvent, TankDestroy
 import { clamp } from '../utils/math';
 import { fireTimbre } from './audioMath';
 import type { Mixer } from './mixer';
-import { cannon, explosion, hitConfirm, hullHit, obstacleImpact, tankImpact, terrainImpact } from './sfxCombat';
+import { cannon, explosion, hitConfirm, hullHit, obstacleImpact, tankImpact, terrainImpact, waterImpact } from './sfxCombat';
 import { alertRise, fallingTone, gameOverTone, radarPing, warningChirp, waveChime } from './sfxCues';
 
 const FIRE_REF_DISTANCE = 25;
@@ -79,23 +79,26 @@ function playFire(mixer: Mixer, event: FireEvent, playerTankId: number, retro: b
   });
 }
 
-function playImpact(mixer: Mixer, event: ImpactEvent, retro: boolean): void {
-  let recipe: typeof terrainImpact;
-  switch (event.surface) {
+/** The sound of a shell hitting `surface`, or null for one that just ran out of range. */
+export function impactRecipeFor(surface: ImpactEvent['surface']): typeof terrainImpact | null {
+  switch (surface) {
     case 'terrain':
+      return terrainImpact;
     case 'water':
-      recipe = terrainImpact;
-      break;
+      return waterImpact;
     case 'obstacle':
     case 'bridge':
-      recipe = obstacleImpact;
-      break;
+      return obstacleImpact;
     case 'tank':
-      recipe = tankImpact;
-      break;
+      return tankImpact;
     case 'expired':
-      return;
+      return null;
   }
+}
+
+function playImpact(mixer: Mixer, event: ImpactEvent, retro: boolean): void {
+  const recipe = impactRecipeFor(event.surface);
+  if (!recipe) return;
   const loudness = event.faction === 'player' ? 0.8 : 0.7;
   mixer.playAt(event.x, event.y, event.z, loudness, IMPACT_REF_DISTANCE, 1, (v, t) => {
     recipe(v, t, retro, 1);
