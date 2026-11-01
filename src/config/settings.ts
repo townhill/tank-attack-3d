@@ -346,12 +346,13 @@ export const TERRAIN_TYPES: Readonly<Record<TerrainType, TerrainTypeSpec>> = {
   hilly: {
     label: 'Hilly',
     // Tuned with tests/coverReport.test.ts, rivers and their valley benches included: meets the PRD
-    // cover target (1.5x Gentle's hidden share) at the cost of about 6% of ground steeper than enemies
-    // like, which the user accepted.
+    // cover target (1.5x Gentle's hidden share) on the tuning seeds and on 36 held-out ones, at the
+    // cost of about 6.5% of ground steeper than enemies like, which the user accepted. Ridges of 10 m
+    // would push Large maps past the 7% steep limit.
     profile: {
       hills: { amplitude: 46, scale: 640, octaves: 4 },
       detail: { amplitude: 5, scale: 120, octaves: 3 },
-      ridges: { height: 9, scale: 400, width: 0.4 },
+      ridges: { height: 9.5, scale: 400, width: 0.4 },
       basinFloor: 0.6,
       // Taller hills need a flatter floor for the spawn to stay as level as Gentle's.
       spawnFloor: 0.06,

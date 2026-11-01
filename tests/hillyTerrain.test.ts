@@ -9,6 +9,8 @@ import { worldFingerprint } from './worldFingerprint';
 const SEEDS = [1, 42, 2026];
 /** PRD cover target: Hilly hides at least this multiple of what Gentle hides. */
 const COVER_TARGET_RATIO = 1.5;
+/** PRD cover in play: cover from a threat 120 m away lies within 60 m for at least this share of positions. */
+const MIN_COVER_WITHIN_60 = 0.85;
 /**
  * Guardrails from the M1 plan (PRD open question 1). The steep limit was raised from 5% to 7% to meet
  * the cover target, and the spawnable floor lowered from 75% to 70% because carved shores are steeper
@@ -77,6 +79,14 @@ describe('Hilly terrain', () => {
 
   it('hides at least 1.5 times as much as Gentle at the 60–150 m enemies fight at', () => {
     expect(meanOf(hilly, (s) => s.hiddenNear)).toBeGreaterThanOrEqual(COVER_TARGET_RATIO * meanOf(gentle, (s) => s.hiddenNear));
+  });
+
+  it('puts cover from a threat no further away than Gentle does', () => {
+    expect(meanOf(hilly, (s) => s.coverDistanceMedian)).toBeLessThanOrEqual(meanOf(gentle, (s) => s.coverDistanceMedian));
+  });
+
+  it('has cover within 60 m for at least 85% of positions', () => {
+    expect(meanOf(hilly, (s) => s.coverWithin60)).toBeGreaterThanOrEqual(MIN_COVER_WITHIN_60);
   });
 
   // Steep and spawnable shares are battlefield-wide averages, as in the cover report; whether every
