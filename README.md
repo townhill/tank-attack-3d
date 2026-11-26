@@ -9,7 +9,7 @@ Everything is original code and procedurally generated geometry and sound. There
 - **Three graphics modes on one simulation:** Classic Vector (green phosphor), **Modern Neon Vector** (default, true hidden-line removal) and Hybrid 3D (shaded armour with shadows). Switching mode never resets the game.
 - **Three cameras:** gunner (first person), chase (third person) and tactical (overhead).
 - **Three enemy types:** standard, heavy and scout, each with distinct AI behaviour, across escalating waves.
-- **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks, futuristic structures and two- to four-storey buildings.
+- **Battlefields:** seeded procedural terrain with hills, flat combat basins, a boundary mountain range, rocks, futuristic structures and two- to four-storey buildings. Choose gentle rolling ground, or Hilly ground whose ridges and valleys give real cover.
 - **Rivers, lakes and bridges:** rivers cross every battlefield with bridges along them, and lakes and ponds lie in the hollows. Tanks wade the shallows but can't cross deep water, and enemies plan their way over the bridges. Optional fords add shallow crossings.
 
 ## Screenshots
@@ -38,6 +38,14 @@ Everything is original code and procedurally generated geometry and sound. There
   <tr>
     <td><b>Rivers and bridges.</b> The longest crossing on each river is a through truss; the others ride on plate girders.</td>
     <td><b>Lake reflections.</b> At High quality the nearest lake in view mirrors the scenery.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/hilly-valley.jpg" alt="Chase view from a hillside on Hilly terrain: the player's cyan tank looks down into a river valley crossed by two glowing amber bridges, with wireframe ridges on both sides and blue mountains beyond"></td>
+    <td><img src="docs/screenshots/hilly-tactical-map.jpg" alt="Tactical map of a Hilly battlefield with dense contour lines, a river crossed by three bridges, two ponds, rocks, structures and enemy tanks with motion vectors"></td>
+  </tr>
+  <tr>
+    <td><b>Hilly terrain.</b> Ridges and valleys break line of sight, and rivers run through valley benches so their bridges still fit.</td>
+    <td><b>Hilly tactical map.</b> Dense contours show the ridges and hollows to hide behind.</td>
   </tr>
 </table>
 
@@ -189,6 +197,23 @@ Choose the battlefield size on the main menu. It is saved with your settings and
 - Huge draws roughly four times as many triangles as Standard. If your GPU struggles, *Auto-reduce quality* (on by default) steps the quality down.
 - A new battlefield is generated in a background thread (a Web Worker), so the menu stays responsive and shows *GENERATING BATTLEFIELD…* meanwhile. That takes about half a second on Huge. Building its 3D scene afterwards still holds the game for about 0.2 s.
 
+### Terrain
+
+Choose the ground in **Settings → Battlefield → Terrain (new battlefields)**. It is saved with your settings and applies to the next new battlefield.
+
+| | Gentle (default) | Hilly |
+|---|---|---|
+| Height range of most of the ground | about 12 m | 36–43 m |
+| Battlefield hidden from a tank at 60–150 m | 23–26% | 39–45% |
+| Median move to cover from a tank 120 m away | 20–25 m | 5–10 m |
+| Ground too steep for enemies | under 1% | about 6.5% |
+
+- **Gentle** is the original rolling ground with flat combat basins. Every seed gives exactly the battlefield it always has.
+- **Hilly** has taller hills, rounded ridgelines and fewer flat basins, so a short drive usually breaks line of sight. Climbs are longer and slower, and enemies steer around the steepest slopes.
+- On Hilly ground each river runs through a valley with a gentle bench beside each bank, so its bridges and fords still fit.
+- The spawn area stays level on both.
+- Hilly changes the battlefield a seed gives, so the start banner shows HILLY and the game over screen lists the terrain.
+
 ### Water and bridges
 
 - **Wading:** water up to 1.2 m deep slows a tank, to under half speed at its deepest. Wading throws spray, leaves a wake and sloshes. Deeper water stops a tank at its edge.
@@ -281,7 +306,7 @@ src/
   main.ts                 entry point, WebGL2 check
   styles.css              HUD / menu styling (CSS custom properties, per-mode themes)
   config/
-    settings.ts           all tunable gameplay constants (tanks, difficulty, waves, AI, damage)
+    settings.ts           all tunable gameplay constants (tanks, difficulty, waves, AI, damage, terrain profiles)
     userSettings.ts       validated, persisted player preferences
   utils/                  math (compass headings), seeded RNG (mulberry32), simplex noise
   world/
@@ -372,7 +397,7 @@ npm test
 npm run coverage
 ```
 
-**904 tests in 39 files** cover:
+**941 tests in 43 files** cover:
 - **Damage:** hit zones, armour, kill detection.
 - **Collision:**
   - circle-vs-box and circle-vs-cylinder pushes
@@ -386,6 +411,11 @@ npm run coverage
 - **AI:** every state transition, steering and obstacle avoidance, reaction delay, never firing through obstacles.
 - **Tank physics:** speed caps, turning, slopes, terrain alignment, turret limits, muzzle position.
 - **World generation:** seeded determinism, obstacle placement rules, slope limits.
+- **Terrain types:**
+  - Gentle battlefields matching fingerprints recorded before terrain types existed
+  - Hilly cover against Gentle, by line of sight and by distance to cover, measured by a seeded battlefield survey
+  - Hilly steepness, spawnable ground, a level spawn and obstacle counts
+  - Hilly rivers keeping their bridges, fords on Hilly, and enemies closing in on Hilly battlefields
 - **Water and bridges:**
   - river courses whose surface never rises downstream, lake rims, banks and wet shores
   - depth, wading speed, the blocked-water distance field against a brute-force check
@@ -405,6 +435,12 @@ npm run coverage
 
 Coverage over the simulation and logic modules is about **98% of statements and 94% of branches**. DOM and WebGL orchestration (`Game.ts`, `HudPresenter.ts` and the rendering views) is verified by browser smoke tests instead.
 
+An opt-in report prints the battlefield survey for both terrain types at every map size and on 36 held-out seeds, and checks Hilly against its cover targets and generation-time budget:
+
+```bash
+COVER_REPORT=1 npx vitest run tests/coverReport.test.ts --silent=false
+```
+
 ---
 
 ## Known limitations
@@ -414,6 +450,7 @@ Coverage over the simulation and logic modules is about **98% of statements and 
 - **Gamepad:** the mapping assumes the standard layout and was not tested with physical hardware.
 - **AI navigation:** enemies plan routes on a coarse grid only when water stands in their way; otherwise they steer locally. Long walls can briefly trap them, after which the automatic unstick manoeuvre recovers them.
 - **Water:** only the nearest lake in view is mirrored, and rivers never are. Bridge girders and truss lattices are scenery: shells and sight lines pass through them, while decks, parapets and piers do block them. Rivers never feed lakes.
+- **Hilly terrain:** enemies drive over and around hills but don't use them for cover or ambush. Lakes and ponds need fairly flat sites, so Hilly battlefields get about 85% of the ones Gentle does.
 - **Huge maps:** the battlefield is generated off the main thread, but building its 3D scene still holds the game for about 0.2 s when it starts.
 - **Collision shapes:** these are approximations: oriented boxes for hulls, cylinders and boxes (some tapered) for obstacles. Bunker roofs are treated as a full box for shell collisions.
 - **Environment:** there is one environment (a night battlefield). Classic and Hybrid are visual modes rather than separate desert or arcade maps.
@@ -423,8 +460,8 @@ Coverage over the simulation and logic modules is about **98% of statements and 
 
 ## Possible future improvements
 
-- **AI:** enemy formations or coordinated flanking, and route planning around walls as well as water.
-- **Battlefields:** additional themes (desert, arcade plain), weather, a day/night cycle, and rivers that flow through lakes.
+- **AI:** enemy formations or coordinated flanking, enemies using hills for cover and ambush, and route planning around walls as well as water.
+- **Battlefields:** more terrain types (mountains, canyons), additional themes (desert, arcade plain), weather, a day/night cycle, and rivers that flow through lakes.
 - **Weapons:** alternative ammunition (HE splash, high-velocity AP), power-ups, and a short-range machine gun.
 - **Effects:** track marks and damage decals on terrain.
 - **Controls:** rebindable keys, and touch controls for tablets.
@@ -436,7 +473,7 @@ Coverage over the simulation and logic modules is about **98% of statements and 
 ## Development summary
 
 **Implemented and verified:**
-- Seeded procedural terrain and obstacles.
+- Seeded procedural terrain and obstacles, on Gentle or Hilly ground.
 - Rivers, lakes and ponds with bridges, wading, splashes and wakes; enemy route planning across water; optional fords.
 - Water shading with quality tiers, wet banks, truss and girder bridges, and mirror reflections on lakes at High quality.
 - Battlefield generation in a Web Worker.
@@ -455,7 +492,7 @@ Coverage over the simulation and logic modules is about **98% of statements and 
 
 **Automated checks:**
 - `npm run typecheck`, `npm run lint` and `npm run build` succeed.
-- All 904 tests pass.
+- All 941 tests pass.
 
 **Browser smoke test** (dev server and production build):
 - Starts with no console errors; menu and HUD render.
@@ -469,6 +506,7 @@ Coverage over the simulation and logic modules is about **98% of statements and 
 - Water and bridges render in all three modes; lake reflections appear at High quality in Neon and Hybrid only.
 - A Huge battlefield generates in the worker while the menu stays responsive.
 - A tank wades across a ford; fords show on the tactical map, the radar and the ground.
+- Hilly battlefields render in all three graphics modes. A tank climbs over a ridge, staying on the ground, and crosses a Hilly river by bridge.
 - Production build runs.
 
 The development-only `window.__vt` handle exposes `debugSnapshot()` and `debugCommand()` for automated testing. It is not present in production builds.

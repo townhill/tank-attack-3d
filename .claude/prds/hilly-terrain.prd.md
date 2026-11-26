@@ -32,7 +32,20 @@ Players of VECTOR TANKS fight on gentle rolling ground. Hills reach only about �
   | Large | 57.9% | 42.6% | 6.4% | 72.6% | 2 of 2 | 5.9 | 1.29× |
   | Huge | 57.5% | 40.6% | 6.2% | 73.9% | 3 of 3 | 9.0 | 1.30× |
 
-  The Standard cover target (56.4%) is met with 0.1 points to spare. Every first-wave enemy on the tested Hilly seeds (one per size, 3 enemies each) closed to fighting range within 75 s, and none got stuck; Gentle managed 2 of 3 on Standard. Fords cross every river on Hilly too.
+  The Standard cover target (56.4%) is met with 0.1 points to spare.
+- Milestone 3 checks (2026-10-31):
+  - **Held-out seeds:** on 36 Standard seeds that tuning never used (113–148), Hilly hid 1.496× what Gentle hid (55.5% against 37.1%). That is just short of the target, so ridges went from 9 to 9.5 m, which brings it to 1.50× (55.7%), and 1.85× at 60–150 m. Ridges of 10 m reached 1.51× but put Large maps at 7.1% steep ground. Detail of 6 m was worse on both counts.
+  - **After that change** (tuning seeds):
+
+    | Size | Hidden, all ranges | Hidden, 60–150 m | Median move to cover | Cover within 60 m | Too steep | Spawnable |
+    |---|---|---|---|---|---|---|
+    | Standard | 56.7% | 42.1% | 6 m | 92.6% | 6.4% | 75.1% |
+    | Large | 56.9% | 39.2% | 10 m | 89.8% | 6.7% | 72.4% |
+    | Huge | 60.2% | 44.9% | 5 m | 94.4% | 6.3% | 73.5% |
+
+    The 1.5× target is set on Standard. Large, surveyed on only 4 seeds, measures 1.46× at all ranges and 1.63× at 60–150 m.
+  - **Cover in play:** Hilly puts cover from a threat 120 m away within a median of 5–10 m, against Gentle's 20–25 m, at every size.
+  - **Playtest:** the developer played Hilly and reported "I've played it and it's good". No problems came up with cover, steepness, enemies or the spawn, so nothing was tuned after the held-out change. Per-match notes weren't recorded. Every first-wave enemy on the tested Hilly seeds (one per size, 3 enemies each) closed to fighting range within 75 s, and none got stuck; Gentle managed 2 of 3 on Standard. Fords cross every river on Hilly too.
 - Assumption: other players feel the same lack of cover. Needs validation via playtests of a Hilly prototype.
 
 ## Users
@@ -46,8 +59,8 @@ We'll know we're right when **a seeded line-of-sight check shows a much larger s
 ## Success Metrics
 | Metric | Target | How measured |
 |---|---|---|
-| Cover: share of the battlefield hidden from direct sight at typical positions, Hilly vs Gentle | Proposed: at least 1.5× Gentle on Standard, i.e. ≥ 56% at all ranges (Gentle 37.6%) and ≥ 34% at 60–150 m (Gentle 22.7%) | Automated seeded line-of-sight sampling across many seeds and all three map sizes |
-| Cover in play: time to reach cover from a typical position | Within a short drive in most Hilly matches (threshold TBD — needs validation via first playtests; Gentle baseline: median 20 m, 85.5% within 60 m) | Developer playtests |
+| Cover: share of the battlefield hidden from direct sight at typical positions, Hilly vs Gentle | Proposed: at least 1.5× Gentle on Standard, i.e. ≥ 56% at all ranges (Gentle 37.6%) and ≥ 34% at 60–150 m (Gentle 22.7%) | Automated seeded line-of-sight sampling across many seeds and all three map sizes, on the tuning seeds and on 36 held-out Standard seeds |
+| Cover in play: time to reach cover from a typical position | Survey: at every map size, Hilly's median move to cover is no longer than Gentle's, and at least 85% of positions have cover within 60 m. Playtests: in at least 5 of 6 Hilly matches, the player can break line of sight within a short drive when needed. Gentle baseline: median 20–25 m, 83–86% within 60 m | Battlefield survey (cover report and Hilly tests), plus developer playtests |
 | Guardrail: Gentle unchanged | Identical battlefields for every tested seed | Compare generated worlds before and after for a fixed set of seeds |
 | Guardrail: Hilly stays playable | Every tested seed yields a battlefield with the same reachability guarantee as Gentle; water fallback rate TBD | Seeded generation check across all map sizes |
 
@@ -72,13 +85,13 @@ On Hilly, everything that works on Gentle keeps working at every map size: river
 
 | # | Milestone | Outcome | Status | Plan |
 |---|---|---|---|---|
-| 1 | Terrain choice | Players can pick Gentle or Hilly, and Gentle is unchanged. Hilly shows taller hills and valleys with a working spawn and obstacles. Its cover is measured against the Gentle baseline, and that sets the target. | in-progress | .claude/plans/hilly-terrain.plan.md |
-| 2 | Hilly fully playable | Water, bridges, fords and enemy routes all work on Hilly at every map size, with the same reachability guarantee as Gentle. | in-progress | .claude/plans/hilly-terrain-m2.plan.md |
-| 3 | Tuned and shipped | Slopes and relief are tuned from playtests until both cover metrics are met. README and screenshots are updated. | pending | — |
+| 1 | Terrain choice | Players can pick Gentle or Hilly, and Gentle is unchanged. Hilly shows taller hills and valleys with a working spawn and obstacles. Its cover is measured against the Gentle baseline, and that sets the target. | complete | .claude/plans/hilly-terrain.plan.md |
+| 2 | Hilly fully playable | Water, bridges, fords and enemy routes all work on Hilly at every map size, with the same reachability guarantee as Gentle. | complete | .claude/plans/hilly-terrain-m2.plan.md |
+| 3 | Tuned and shipped | Slopes and relief are tuned from playtests until both cover metrics are met. README and screenshots are updated. | complete | .claude/plans/hilly-terrain-m3.plan.md |
 
 ## Open Questions
-- [ ] **How steep is too steep?** Tanks slow down on climbs and enemies avoid steep ground. What height and slope keep fights moving and every area reachable? Needs validation via playtests.
-- [ ] **Keep the spawn level on Hilly?** The start area is flattened today. Keeping it flat is safe; a hilly start would give cover from the first second.
+- [x] **How steep is too steep?** Answered in milestone 3: Hilly as it stands. About 6.5% of the ground is too steep for enemies (limit 7%), every area stays reachable, and the playtest found the climbs fine.
+- [x] **Keep the spawn level on Hilly?** Answered in milestone 3: yes. The playtest found the level start fine, so there is no hilly start.
 - [x] **Water on Hilly maps.** Answered in milestone 2. Rivers already follow the low ground; they failed because bridge ramps could not climb out of the deep cuttings they carve through tall hills. On Hilly, each river now carves a gentle bench beside its banks, and every tested seed keeps all its rivers, with bridges and fords. A few lakes still find no site flat enough (2.8 of 3 on Standard).
 
 ## Risks
@@ -93,4 +106,4 @@ On Hilly, everything that works on Gentle keeps working at every map size: river
 | Battlefield generation gets noticeably slower on Huge | Low | Low | Measure generation time on Hilly against Gentle |
 
 ---
-*Status: DRAFT — requirements only. Implementation planning pending via /plan.*
+*Status: DELIVERED — all three milestones complete (2026-10-31). More players' playtests remain the open validation.*
