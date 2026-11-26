@@ -15,6 +15,9 @@
     "coverage": "vitest run --coverage"
   },
   "license": "MIT",
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "three": "^0.186.1"
   },
