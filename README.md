@@ -2,6 +2,8 @@
 
 ![Chase view in Modern Neon Vector mode: the player's cyan tank faces red standard, orange heavy and magenta scout tanks beside a radio tower and multi-storey buildings, with the radar, armour and cannon gauges on the HUD](docs/screenshots/neon-chase.jpg)
 
+**Play it now:** <https://tank-attack-3d-production.up.railway.app/>
+
 A browser-based 3D tank combat game inspired by the 1980 arcade classic *Battlezone* and the 1989 Acorn Archimedes game *3D Tanks*, rebuilt with modern hidden-line vector graphics, physics-based tank handling, state-machine enemy AI, a compact radar and a full tactical map.
 
 Everything is original code and procedurally generated geometry and sound. There are no asset downloads, accounts or backend services: the game runs entirely in the browser.
@@ -53,7 +55,7 @@ Everything is original code and procedurally generated geometry and sound. There
 
 ## Prerequisites
 
-- **Node.js 20.19+ or 22.12+** (developed with Node 24) and npm.
+- **Node.js 24** and npm. `package.json` pins `engines.node` to `24.x`, which is also the version the Railway build uses; Vite itself runs on 20.19+ or 22.12+.
 - A desktop browser with **WebGL 2**: current Chrome, Edge, Firefox or Safari.
 
 ## Installation and commands
@@ -80,6 +82,19 @@ Opens the dev server at <http://localhost:5173>.
 | `npm run coverage` | Tests with a V8 coverage report |
 
 The production build is a static site in `dist/`; serve it from any static web host. Asset paths are relative, so a subfolder works too.
+
+### Deploying to Railway
+
+The live site at <https://tank-attack-3d-production.up.railway.app/> is deployed this way.
+
+The repository needs no Railway config file. Railway's builder (Railpack) recognises a Vite project from `vite.config.ts` and the `vite build` in the build script, runs `npm run build`, and serves `dist/` with Caddy. It does this only while `package.json` has no `start` script and no `main` field, so do not add either.
+
+1. In Railway, create a project with **Deploy from GitHub repo** and pick this repository and the branch to deploy.
+2. Leave the build and start commands empty.
+3. Under the service's **Networking** settings, generate a domain.
+4. Optionally set the healthcheck path to `/health`, which the default Caddy config answers.
+
+If a deploy serves the wrong folder, set the service variable `RAILPACK_SPA_OUTPUT_DIR=dist`. The Node version comes from `engines.node` in `package.json`.
 
 **Battlefield seeds:** each new game uses a random battlefield. To replay a specific one, add a seed to the URL, for example `http://localhost:5173/?seed=12345`. **Restart** after game over always reuses the same battlefield. The seed is shown when a game starts and on the game-over screen. Turning fords on (see [Water and bridges](#water-and-bridges)) changes the battlefield a seed gives.
 

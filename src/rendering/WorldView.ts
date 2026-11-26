@@ -215,6 +215,11 @@ export class WorldView {
     this.sun.shadow.map = null;
   }
 
+  /** Rebuilds what a lost graphics context wiped out: the environment map is rendered once, not every frame. */
+  restoreContext(): void {
+    if (this.spec) this.rebuildEnvironment(this.spec);
+  }
+
   private rebuildEnvironment(spec: GraphicsModeSpec): void {
     this.envTexture?.dispose();
     this.envTexture = null;

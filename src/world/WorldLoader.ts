@@ -2,8 +2,9 @@
  * Generates battlefields off the main thread. A Huge map takes around half a
  * second to generate, long enough to freeze the menu, so a Web Worker builds
  * the world and sends back its packed data (see worldTransfer). Where no
- * worker can be started, or one fails, the world is generated on the main
- * thread instead; either way the same seed gives the same battlefield.
+ * worker can be started, or one fails or stops answering, the world is
+ * generated on the main thread instead; either way the same seed gives the
+ * same battlefield.
  */
 import type { MapSize, TerrainType } from '../config/settings';
 import type { World } from './World';
@@ -32,7 +33,17 @@ export interface WorldWorker {
   terminate(): void;
 }
 
+/**
+ * How long a request may go unanswered before the worker is given up on. A
+ * browser can kill a worker (out of memory, say) without reporting an error,
+ * which would otherwise leave the menu generating for ever. Far longer than
+ * the half second a Huge map takes, to allow for slow devices and queued requests.
+ */
+export const WORLD_TIMEOUT_MS = 20000;
+
 interface Job {
+  /** Gives up on the worker if it has not answered in time. */
+  readonly timer: ReturnType<typeof setTimeout>;
   readonly seed: number;
   readonly mapSize: MapSize;
   readonly fords: boolean;
@@ -73,7 +84,10 @@ export class WorldLoader {
   private nextId = 1;
   private readonly jobs = new Map<number, Job>();
 
-  constructor(private readonly createWorker: () => WorldWorker | null = browserWorldWorker) {}
+  constructor(
+    private readonly createWorker: () => WorldWorker | null = browserWorldWorker,
+    private readonly timeoutMs = WORLD_TIMEOUT_MS,
+  ) {}
 
   /**
    * The battlefield for `seed` at `mapSize` with `terrain` ground, with fords
@@ -85,8 +99,18 @@ export class WorldLoader {
     if (!worker) return new Promise<World>((resolve) => { resolve(generateHere(seed, mapSize, fords, terrain)); });
     const id = this.nextId++;
     return new Promise<World>((resolve, reject) => {
-      this.jobs.set(id, { seed, mapSize, fords, terrain, resolve, reject });
-      worker.post({ id, seed, mapSize, fords, terrain });
+      const timer = setTimeout(() => {
+        this.fail('did not answer in time');
+      }, this.timeoutMs);
+      this.jobs.set(id, { timer, seed, mapSize, fords, terrain, resolve, reject });
+      try {
+        worker.post({ id, seed, mapSize, fords, terrain });
+      } catch (error) {
+        // The request never left, so nothing will answer it: without this its timer would later condemn a healthy worker.
+        this.jobs.delete(id);
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 
@@ -94,9 +118,7 @@ export class WorldLoader {
   dispose(): void {
     this.worker?.terminate();
     this.worker = null;
-    const jobs = [...this.jobs.values()];
-    this.jobs.clear();
-    for (const job of jobs) job.reject(new Error('World loader disposed'));
+    for (const job of this.takeJobs()) job.reject(new Error('World loader disposed'));
   }
 
   private ensureWorker(): WorldWorker | null {
@@ -112,7 +134,7 @@ export class WorldLoader {
         this.receive(reply);
       },
       () => {
-        this.fail();
+        this.fail('stopped');
       },
     );
     return this.worker;
@@ -122,6 +144,7 @@ export class WorldLoader {
     const job = this.jobs.get(reply.id);
     if (!job) return;
     this.jobs.delete(reply.id);
+    clearTimeout(job.timer);
     if ('world' in reply) {
       try {
         job.resolve(unpackWorld(reply.world));
@@ -135,14 +158,20 @@ export class WorldLoader {
     finishHere(job);
   }
 
-  /** The worker died: finishes every outstanding request here and stops using it. */
-  private fail(): void {
-    console.warn('World worker stopped; generating on the main thread');
+  /** The worker died or hung, as `reason` says: finishes every outstanding request here and stops using it. */
+  private fail(reason: string): void {
+    console.warn(`World worker ${reason}; generating on the main thread`);
     this.worker?.terminate();
     this.worker = null;
+    for (const job of this.takeJobs()) finishHere(job);
+  }
+
+  /** Empties the outstanding requests, stopping their timers, and returns them. */
+  private takeJobs(): Job[] {
     const jobs = [...this.jobs.values()];
     this.jobs.clear();
-    for (const job of jobs) finishHere(job);
+    for (const job of jobs) clearTimeout(job.timer);
+    return jobs;
   }
 }
 

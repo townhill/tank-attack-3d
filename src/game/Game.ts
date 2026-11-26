@@ -7,7 +7,7 @@ import type { AudioEnemy, AudioFrame } from '../audio/AudioManager';
 import { AudioManager } from '../audio/AudioManager';
 import type { MapSize, TerrainType } from '../config/settings';
 import { DIFFICULTY, PROJECTILE, SIM_DT, TANK_SPECS, TERRAIN_TYPES } from '../config/settings';
-import type { UserSettings } from '../config/userSettings';
+import type { QualityLevel, UserSettings } from '../config/userSettings';
 import { browserStorage, GRAPHICS_MODES, SettingsStore } from '../config/userSettings';
 import type { Tank } from '../entities/Tank';
 import { InputManager } from '../input/InputManager';
@@ -45,6 +45,7 @@ const VISIBILITY_RANGE = 900;
 const MAX_FRAME_TIME = 0.1;
 /** After the browser refuses pointer lock, clicks fire normally for this long before retrying. */
 const LOCK_RETRY_MS = 3000;
+const CONTEXT_LOST_STATUS = 'GRAPHICS LOST · WAITING FOR THE BROWSER TO RESTORE THEM';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 0x7fffffff);
@@ -71,6 +72,8 @@ export class Game {
   private readonly settingsStore: SettingsStore;
   private readonly bestStore: BestScoreStore;
   private settings: UserSettings;
+  /** The quality level in effect: the chosen one, unless auto-quality lowered it for this session. */
+  private quality: QualityLevel;
   private best: number;
   private sim: Simulation;
   private seed: number;
@@ -91,6 +94,10 @@ export class Game {
   private state: AppState = 'menu';
   private mapOpen = false;
   private expectingUnlock = false;
+  /** True while the browser has taken the graphics context away; nothing can be drawn, so no game starts or resumes. */
+  private contextLost = false;
+  /** The menu status line wanted once the graphics context is available. */
+  private status: string | null = null;
   private lockFailedAt = Number.NEGATIVE_INFINITY;
   private lastTime = 0;
   private time = 0;
@@ -119,6 +126,7 @@ export class Game {
     this.settingsStore = new SettingsStore(storage);
     this.bestStore = new BestScoreStore(storage);
     this.settings = this.settingsStore.load();
+    this.quality = this.settings.quality;
     this.best = this.bestStore.load();
 
     this.renderer = new Renderer(this.canvas);
@@ -180,15 +188,35 @@ export class Game {
     return new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, fords, terrain, world, firstWaveDelay: Number.POSITIVE_INFINITY });
   }
 
+  /**
+   * Sets the menu's status line. While the graphics context is lost the menu
+   * says so instead, and `text` is shown once the context is back.
+   */
+  private setStatus(text: string | null): void {
+    this.status = text;
+    this.menu.setStatus(this.contextLost ? CONTEXT_LOST_STATUS : text);
+  }
+
   /** Drops any battlefield still being generated, so its arrival starts nothing. */
   private cancelWorldLoad(): void {
     this.worldRequest++;
-    this.menu.setStatus(null);
+    this.setStatus(null);
   }
 
   private bindEvents(): void {
     window.addEventListener('resize', () => { this.resize(); });
     document.addEventListener('fullscreenchange', () => { this.resize(); });
+    this.watchPixelRatio();
+    this.renderer.onContextLost = () => {
+      this.contextLost = true;
+      if (this.state === 'playing') this.pause();
+      this.setStatus(this.status);
+    };
+    this.renderer.onContextRestored = () => {
+      this.contextLost = false;
+      this.worldView.restoreContext();
+      this.setStatus(this.status);
+    };
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.state === 'playing') this.pause();
     });
@@ -226,6 +254,19 @@ export class Game {
     }
   }
 
+  /**
+   * Resizes when the display's pixel ratio changes without the window changing
+   * size, as when it is dragged to another monitor. The query matches only the
+   * current ratio, so it is renewed after each change.
+   */
+  private watchPixelRatio(): void {
+    const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    query.addEventListener('change', () => {
+      this.resize();
+      this.watchPixelRatio();
+    }, { once: true });
+  }
+
   private resize(): void {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
@@ -240,12 +281,17 @@ export class Game {
     const previous = this.settings;
     this.settings = next;
     this.settingsStore.save(next);
+    // Choosing a level, or turning auto-quality off, undoes a level it lowered this session.
+    if (previous.quality !== next.quality || !next.autoQuality) this.autoQuality.restore();
+    const quality = this.autoQuality.effective(next.quality);
+    const qualityChanged = quality !== this.quality;
+    this.quality = quality;
     const spec = GRAPHICS_MODE_SPECS[next.graphicsMode];
-    const preset = QUALITY_PRESETS[next.quality];
-    this.renderer.configure({ quality: next.quality, mode: spec, bloomMultiplier: next.bloomStrength, scanlines: next.scanlines, flicker: next.flicker });
+    const preset = QUALITY_PRESETS[quality];
+    this.renderer.configure({ quality, mode: spec, bloomMultiplier: next.bloomStrength, scanlines: next.scanlines, flicker: next.flicker });
     this.worldView.setShadowMapSize(preset.shadowMapSize);
     // A new quality level brings back reflections auto-quality turned off.
-    if (previous.quality !== next.quality) this.worldView.setReflectionsAllowed(true);
+    if (qualityChanged || previous.quality !== next.quality) this.worldView.setReflectionsAllowed(true);
     this.worldView.applyMode(spec, next, preset.shadows);
     this.hud.setTheme(spec.hudTheme);
     this.radar.setTheme(next.graphicsMode);
@@ -259,7 +305,7 @@ export class Game {
     this.perf.setVisible(next.showPerf);
     document.body.dataset.mode = next.graphicsMode;
     this.updateRadarVisibility();
-    if (previous.graphicsMode !== next.graphicsMode || previous.quality !== next.quality) this.autoQuality.reset();
+    if (previous.graphicsMode !== next.graphicsMode || previous.quality !== next.quality || qualityChanged) this.autoQuality.reset();
     this.menu.setSettings(next);
     this.resize();
   }
@@ -288,25 +334,26 @@ export class Game {
    * starts when it arrives unless another start was asked for meanwhile.
    */
   private startNewGame(seed: number): void {
+    if (this.contextLost) return;
     const mapSize = this.settings.mapSize;
     const fords = this.settings.fords;
     const terrain = this.settings.terrain;
     const request = ++this.worldRequest;
     if (seed === this.sim.world.seed && mapSize === this.mapSize && fords === this.worldFords && terrain === this.worldTerrain) {
-      this.menu.setStatus(null);
+      this.setStatus(null);
       this.beginGame(seed, mapSize, fords, terrain, this.sim.world);
       return;
     }
-    this.menu.setStatus('GENERATING BATTLEFIELD…');
+    this.setStatus('GENERATING BATTLEFIELD…');
     this.worldLoader.load(seed, mapSize, fords, terrain).then(
       (world) => {
         if (request !== this.worldRequest) return;
-        this.menu.setStatus(null);
+        this.setStatus(null);
         this.beginGame(seed, mapSize, fords, terrain, world);
       },
       (error: unknown) => {
         console.error('Battlefield generation failed', error);
-        if (request === this.worldRequest) this.menu.setStatus('BATTLEFIELD GENERATION FAILED');
+        if (request === this.worldRequest) this.setStatus('BATTLEFIELD GENERATION FAILED');
       },
     );
   }
@@ -321,7 +368,7 @@ export class Game {
     this.sim = new Simulation({ seed, difficulty: this.settings.difficulty, mapSize, world });
     if (!sameWorld) {
       this.worldView.setWorld(this.sim.world);
-      this.worldView.applyMode(GRAPHICS_MODE_SPECS[this.settings.graphicsMode], this.settings, QUALITY_PRESETS[this.settings.quality].shadows);
+      this.worldView.applyMode(GRAPHICS_MODE_SPECS[this.settings.graphicsMode], this.settings, QUALITY_PRESETS[this.quality].shadows);
       this.map.setWorld(this.sim.world);
       this.cameraManager.setWorld(this.sim.world);
     } else {
@@ -363,7 +410,7 @@ export class Game {
   }
 
   private resume(): void {
-    if (this.state !== 'paused') return;
+    if (this.state !== 'paused' || this.contextLost) return;
     this.cancelWorldLoad();
     this.state = 'playing';
     this.menu.hide();
@@ -378,7 +425,7 @@ export class Game {
     this.state = 'gameover';
     const stats = this.sim.stats;
     const newRecord = this.bestStore.submit(stats.score);
-    this.best = this.bestStore.load() || Math.max(this.best, stats.score);
+    this.best = this.bestStore.load();
     this.closeMap(false);
     this.input.captureKeys = false;
     if (this.input.pointerLocked) {
@@ -608,7 +655,7 @@ export class Game {
       tanks: this.sim.tanks.length,
       shells: this.sim.projectiles.activeCount(),
       particles: effects.particleCount,
-      quality: this.settings.quality,
+      quality: this.quality,
     });
     if (playing) this.checkPerformance(dt);
     this.input.endFrame();
@@ -702,7 +749,11 @@ export class Game {
     this.audio.update(dt, f);
   }
 
-  /** Steps the graphics down when the frame rate stays low (if enabled): lake reflections first, then the quality preset. */
+  /**
+   * Steps the graphics down when the frame rate stays low (if enabled): lake
+   * reflections first, then the quality preset. The lower preset lasts for the
+   * session; the saved setting keeps the level the player chose.
+   */
   private checkPerformance(dt: number): void {
     if (!this.settings.autoQuality) return;
     // Turning reflections off only helps while a lake is actually being mirrored.
@@ -713,7 +764,7 @@ export class Game {
       this.hud.toast('LOW FRAME RATE: LAKE REFLECTIONS OFF');
       return;
     }
-    this.updateSettings({ quality: step.level });
+    this.applySettings(this.settings);
     this.hud.toast(`LOW FRAME RATE: QUALITY SET TO ${step.level.toUpperCase()}`);
   }
 
@@ -727,7 +778,7 @@ export class Game {
       mapOpen: this.mapOpen,
       camera: this.cameraState.mode,
       graphicsMode: this.settings.graphicsMode,
-      quality: this.settings.quality,
+      quality: this.quality,
       seed: this.seed,
       mapSize: this.mapSize,
       terrain: this.worldTerrain,

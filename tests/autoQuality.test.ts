@@ -44,6 +44,37 @@ describe('AutoQuality', () => {
     expect(run(auto, SLOW_SECONDS - 0.5, 20, 'high', true)).toBeNull();
   });
 
+  it('remembers the level it stepped down to for the session, leaving the chosen level alone', () => {
+    const auto = new AutoQuality();
+    expect(auto.effective('high')).toBe('high');
+    expect(run(auto, SLOW_SECONDS + 0.5, 20, 'high', false)).toEqual({ kind: 'quality', level: 'medium' });
+    expect(auto.effective('high')).toBe('medium');
+    // The player's choice is still high, so the next step is worked out from the lowered level.
+    expect(run(auto, SLOW_SECONDS + 0.5, 20, 'high', false)).toEqual({ kind: 'quality', level: 'low' });
+    expect(auto.effective('high')).toBe('low');
+    expect(run(auto, 30, 20, 'high', false)).toBeNull();
+  });
+
+  it('never raises the quality above the chosen level', () => {
+    const auto = new AutoQuality();
+    run(auto, SLOW_SECONDS + 0.5, 20, 'high', false);
+    expect(auto.effective('low')).toBe('low');
+  });
+
+  it('goes back to the chosen level when restored', () => {
+    const auto = new AutoQuality();
+    run(auto, SLOW_SECONDS + 0.5, 20, 'high', false);
+    auto.restore();
+    expect(auto.effective('high')).toBe('high');
+  });
+
+  it('keeps the lowered level across a reset', () => {
+    const auto = new AutoQuality();
+    run(auto, SLOW_SECONDS + 0.5, 20, 'high', false);
+    auto.reset();
+    expect(auto.effective('high')).toBe('medium');
+  });
+
   it('starts over after a reset', () => {
     const auto = new AutoQuality();
     expect(run(auto, SLOW_SECONDS - 0.5, 20, 'high', true)).toBeNull();

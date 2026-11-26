@@ -57,11 +57,21 @@ export interface KeyValueStore {
 
 const BEST_SCORE_KEY = 'vectorTanks.bestScore';
 
-/** Persists the best score; tolerates missing or failing storage. */
+/**
+ * Persists the best score; tolerates missing or failing storage, in which
+ * case the best score is still remembered for the session.
+ */
 export class BestScoreStore {
+  /** Best score submitted this session, which stands in when storage cannot keep it. */
+  private sessionBest = 0;
+
   constructor(private readonly storage: KeyValueStore | null) {}
 
   load(): number {
+    return Math.max(this.stored(), this.sessionBest);
+  }
+
+  private stored(): number {
     if (!this.storage) return 0;
     try {
       const raw = this.storage.getItem(BEST_SCORE_KEY);
@@ -73,12 +83,14 @@ export class BestScoreStore {
     }
   }
 
-  /** Records `score` if it beats the stored best. Returns true for a new record. */
+  /** Records `score` if it beats the best so far. Returns true for a new record. */
   submit(score: number): boolean {
-    if (score <= this.load()) return false;
+    const whole = Math.floor(score);
+    if (!(whole > this.load())) return false;
+    this.sessionBest = whole;
     if (!this.storage) return true;
     try {
-      this.storage.setItem(BEST_SCORE_KEY, String(Math.floor(score)));
+      this.storage.setItem(BEST_SCORE_KEY, String(whole));
     } catch (error) {
       console.warn('Unable to save best score', error);
     }
