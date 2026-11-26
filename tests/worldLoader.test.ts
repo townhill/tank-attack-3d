@@ -4,7 +4,7 @@ import { createStaticHit } from '../src/world/World';
 import type { World } from '../src/world/World';
 import { generateWorld, worldOptionsFor } from '../src/world/WorldGenerator';
 import type { WorldReply, WorldRequest, WorldWorker } from '../src/world/WorldLoader';
-import { browserWorldWorker, WorldLoader } from '../src/world/WorldLoader';
+import { browserWorldWorker, WORLD_TIMEOUT_MS, WorldLoader } from '../src/world/WorldLoader';
 import type { PackedWorld } from '../src/world/worldTransfer';
 import { packWorld, transferablesOf, unpackWorld } from '../src/world/worldTransfer';
 import { makeRiverWorld } from './waterFixtures';
@@ -108,6 +108,7 @@ function local(seed: number, mapSize: MapSize = 'standard'): World {
 
 describe('WorldLoader', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -204,6 +205,60 @@ describe('WorldLoader', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(worker.requests).toHaveLength(2);
     expect(warn).toHaveBeenCalled();
+  });
+
+  it('gives up on a worker that never answers and finishes the request here', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const worker = new FakeWorker();
+    const loader = new WorldLoader(() => worker);
+    const a = loader.load(1, 'standard');
+    const b = loader.load(2, 'standard');
+    vi.advanceTimersByTime(WORLD_TIMEOUT_MS - 1);
+    expect(worker.terminated).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(worker.terminated).toBe(true);
+    expect((await a).seed).toBe(1);
+    expect((await b).seed).toBe(2);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('does not time out a request the worker answered', async () => {
+    vi.useFakeTimers();
+    const worker = new FakeWorker();
+    const loader = new WorldLoader(() => worker);
+    const pending = loader.load(3, 'standard');
+    worker.answer(0);
+    expect((await pending).seed).toBe(3);
+    vi.advanceTimersByTime(WORLD_TIMEOUT_MS * 2);
+    expect(worker.terminated).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves no timer running once disposed', async () => {
+    vi.useFakeTimers();
+    const loader = new WorldLoader(() => new FakeWorker());
+    const pending = loader.load(5, 'standard');
+    loader.dispose();
+    await expect(pending).rejects.toThrow('World loader disposed');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('rejects a request that could not be sent, and keeps the worker', async () => {
+    vi.useFakeTimers();
+    const worker = new FakeWorker();
+    const post = vi.spyOn(worker, 'post').mockImplementationOnce(() => {
+      throw new Error('could not be cloned');
+    });
+    const loader = new WorldLoader(() => worker);
+    await expect(loader.load(1, 'standard')).rejects.toThrow('could not be cloned');
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(WORLD_TIMEOUT_MS * 2);
+    expect(worker.terminated).toBe(false);
+    post.mockRestore();
+    const pending = loader.load(2, 'standard');
+    worker.answer(0);
+    expect((await pending).seed).toBe(2);
   });
 
   it('rejects, rather than throws, when generating here fails', async () => {

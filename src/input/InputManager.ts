@@ -3,6 +3,8 @@
  * and edge-triggered presses; the game decides what each input means.
  */
 
+import { isBrowserShortcut } from './shortcuts';
+
 /** Keys whose default browser behaviour is suppressed while in gameplay. */
 const GAME_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyV', 'KeyM', 'KeyR', 'KeyC', 'KeyF', 'KeyH', 'KeyP',
@@ -86,6 +88,8 @@ export class InputManager {
 
   private handleKeyDown(e: KeyboardEvent): void {
     if (isEditableTarget(e.target)) return;
+    // Ctrl+R, Cmd+F and the like belong to the browser: they are neither blocked nor treated as game keys.
+    if (isBrowserShortcut(e)) return;
     if (this.captureKeys && GAME_KEYS.has(e.code)) e.preventDefault();
     if (!e.repeat) {
       this.pressed.add(e.code);

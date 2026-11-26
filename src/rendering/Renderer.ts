@@ -13,6 +13,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { QualityLevel } from '../config/userSettings';
 import type { GraphicsModeSpec } from './GraphicsModes';
+import { targetPixelRatio } from './pixelRatio';
 
 interface QualityPreset {
   readonly pixelRatioCap: number;
@@ -78,6 +79,10 @@ export interface RenderConfig {
 
 export class Renderer {
   readonly renderer: WebGLRenderer;
+  /** Called when the browser takes the graphics context away (a GPU reset, say); nothing draws until it returns. */
+  onContextLost: (() => void) | null = null;
+  /** Called once the graphics context is back, for owners of render-target contents to rebuild them. */
+  onContextRestored: (() => void) | null = null;
   readonly scene = new Scene();
   readonly camera: PerspectiveCamera;
   private composer: EffectComposer | null = null;
@@ -90,8 +95,24 @@ export class Renderer {
   private height = 1;
   private time = 0;
 
-  constructor(canvas: HTMLCanvasElement) {
+  private readonly handleContextLost = (event: Event): void => {
+    // Without this the browser never restores the context.
+    event.preventDefault();
+    console.warn('WebGL context lost');
+    this.onContextLost?.();
+  };
+
+  private readonly handleContextRestored = (): void => {
+    console.info('WebGL context restored');
+    this.rebuildComposer();
+    this.onContextRestored?.();
+  };
+
+  constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', stencil: false });
+    // Registered after three.js's own handlers, so its state is already rebuilt when a restore reaches ours.
+    canvas.addEventListener('webglcontextlost', this.handleContextLost);
+    canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = NoToneMapping;
     this.renderer.shadowMap.enabled = true;
@@ -117,7 +138,7 @@ export class Renderer {
     this.config = config;
     const preset = QUALITY_PRESETS[config.quality];
     if (!previous || previous.quality !== config.quality) {
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.pixelRatioCap));
+      this.renderer.setPixelRatio(targetPixelRatio(window.devicePixelRatio, preset.pixelRatioCap));
       this.rebuildComposer();
     }
     const bloom = this.bloom;
@@ -167,6 +188,12 @@ export class Renderer {
   setSize(width: number, height: number): void {
     this.width = Math.max(1, Math.floor(width));
     this.height = Math.max(1, Math.floor(height));
+    // Browser zoom and a move to another display change the device pixel ratio along with the size.
+    const ratio = targetPixelRatio(window.devicePixelRatio, this.preset.pixelRatioCap);
+    if (ratio !== this.renderer.getPixelRatio()) {
+      this.renderer.setPixelRatio(ratio);
+      this.composer?.setPixelRatio(ratio);
+    }
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
     this.camera.updateProjectionMatrix();
@@ -214,6 +241,8 @@ export class Renderer {
   }
 
   dispose(): void {
+    this.canvas.removeEventListener('webglcontextlost', this.handleContextLost);
+    this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.composer?.dispose();
     this.renderer.dispose();
   }

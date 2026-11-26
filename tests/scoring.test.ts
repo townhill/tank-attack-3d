@@ -231,6 +231,15 @@ describe('BestScoreStore', () => {
       expect(best.submit(0)).toBe(false);
       expect(warn).not.toHaveBeenCalled();
     });
+
+    it('remembers the best score for the session, so a lower score is not a record', () => {
+      const best = new BestScoreStore(null);
+      expect(best.submit(5000)).toBe(true);
+      expect(best.submit(100)).toBe(false);
+      expect(best.submit(5000)).toBe(false);
+      expect(best.load()).toBe(5000);
+      expect(best.submit(5001)).toBe(true);
+    });
   });
 
   describe('with a store that throws', () => {
@@ -252,9 +261,15 @@ describe('BestScoreStore', () => {
 
     it('submit swallows read and write errors and still reports the record', () => {
       const best = new BestScoreStore(failing());
-      expect(() => best.submit(250)).not.toThrow();
       expect(best.submit(250)).toBe(true);
       expect(warn).toHaveBeenCalled();
+    });
+
+    it('still knows the session best when nothing can be saved', () => {
+      const best = new BestScoreStore(failing());
+      best.submit(250);
+      expect(best.submit(100)).toBe(false);
+      expect(best.load()).toBe(250);
     });
 
     it('survives a store that only fails on write', () => {
